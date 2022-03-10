@@ -170,11 +170,12 @@ class GameState():
         self.BluePlayer = Player(BLUE, BlueKingPosition)
         self.YellowPlayer = Player(YELLOW, YellowKingPosition)
         self.GreenPlayer = Player(GREEN, GreenKingPosition)
+        self.GreenPlayer = Player(GREEN, GreenKingPosition)
         self.allPlayers = [self.RedPlayer,self.BluePlayer,self.YellowPlayer,self.GreenPlayer]
         self.getValidMoves()
         self.fiftyRuleRepition = 0
-        self.movesMade = 7
-        self.MaxMoveLimit = 10
+        self.movesMade = 0
+        self.MaxMoveLimit = 200
         self.gameOutcome = ()
         self.currentState = np.zeros((len(channels), 14, 14))
         self.update_current_state()
@@ -182,10 +183,10 @@ class GameState():
     def finishGame(self):
         self.gameOver = True
         players = self.allPlayers
-        print("Raw Scores:" + str(ValueNetworkfunctions.getValue(players,valueFunction="Raw")))
-        print("Centered:" + str(ValueNetworkfunctions.getValue(players,valueFunction="Centered")))
-        print("Percentage Range 1:"+ str(ValueNetworkfunctions.getValue(players,valueFunction="PercentageRange1")))
-        print("Percentage Range 2" + str(ValueNetworkfunctions.getValue(players, valueFunction="PercentageRange2")))
+        #print("Raw Scores:" + str(ValueNetworkfunctions.getValue(players,valueFunction="Raw")))
+        #print("Centered:" + str(ValueNetworkfunctions.getValue(players,valueFunction="Centered")))
+        #print("Percentage Range 1:"+ str(ValueNetworkfunctions.getValue(players,valueFunction="PercentageRange1")))
+        #print("Percentage Range 2" + str(ValueNetworkfunctions.getValue(players, valueFunction="PercentageRange2")))
         self.gameOutcome = ValueNetworkfunctions.getValue(players)
         boardStatesWithPlayerWinScore = []
         for boardState in self.boards:
@@ -484,7 +485,7 @@ class GameState():
             self.update_currentStateRC(move.finalRookPosition[0], move.finalRookPosition[1])
             self.update_currentStateRC(move.startingRookPosition[0], move.startingRookPosition[1])
         if (move.pawnPremoted):
-            print("Pawn Premoted")
+            #print("Pawn Premoted")
             self.premotePawn(move.endRow, move.endCol)
             self.update_currentStateRC(move.endRow, move.endCol)
         self.finishTurn()
@@ -573,13 +574,7 @@ class GameState():
         if piece != EMPTYSQUARE and piece != NULLSQUARE:
             if self.turn != self.pieceTeamFromNumber(piece):
                 return True
-        if IsPawn == True:
-            # check if it is a enpassent square
-            for enPassentSquare in self.enPassentSquares:
-                #print("Checking if can take enPassent")
-                if enPassentSquare[0] == capture and self.turn!= self.pieceTeamFromNumber(piece):
-                    print("Can take EnPassent")
-                    # found a square that can be taken en passent
+
         return False
     def pawnMoves(self, r, c):
         piecePinned = False
@@ -904,18 +899,11 @@ class GameState():
                         if not (moves[i].endRow,moves[i].endCol) in validSquares:
                             moves.remove(moves[i])
                 if moves == []:
-                    #print("checkmated1")
-                    if not self.fakeGame:
-                        print("checkmate")
-                        print(self.getMovingPlayer())
                     self.checkMatePlayer(movingPlayer)
                 #checkmate if validmoves = []
             else: #double check
                 self.kingMoves(kingRow,kingCol)
                 if moves == []:
-                    if not self.fakeGame:
-                        print("checkmate")
-                        print(self.getMovingPlayer())
                     #print("checkmated2")
                     self.checkMatePlayer(movingPlayer)
 
@@ -923,9 +911,6 @@ class GameState():
         else:
             moves = self.validMoves
             if moves == []:# stalemate
-                if not self.fakeGame:
-                    print("Stalemate")
-                    print(self.getMovingPlayer())
                 currentPlayer = self.getMovingPlayer()
 
                 for player in self.allPlayers:
@@ -943,8 +928,8 @@ class GameState():
         for possibleRemainingPlayers in self.allPlayers:
             if possibleRemainingPlayers.playing:
                 numberOfremainingPlayers += 1
-        print("number of players remaining: ")
-        print(numberOfremainingPlayers)
+        #print("number of players remaining: ")
+        #print(numberOfremainingPlayers)
         #if numberOfremainingPlayers <= 1:
         #    self.gameOver = True
         #if not wasKingCapturedOnAnotherTurn:
@@ -956,7 +941,7 @@ class GameState():
                 if piece != EMPTYSQUARE and piece !=NULLSQUARE and self.pieceTeamFromNumber(piece) == team:
                     self.board[r][c] = self.DeactivatePieceFromNumber(piece)
     def checkMatePlayer(self,player:Player):
-        print("player checkmated")
+        #print("player checkmated")
         self.scorePlayersThatCheckmatedPlayer(player)
         player.playing = False
         self.removePlayer(player)
@@ -1078,8 +1063,6 @@ class GameState():
                 break
             else:
                 activePLayers-=1
-                if not self.fakeGame:
-                    print("here 3")
                 if activePLayers<=1:
                     self.finishGame()
                     break
@@ -1097,11 +1080,6 @@ class GameState():
 
 
         if self.fakeGame == False and self.validMoves ==[]:
-            print("here no moves but didnt stalemate/checkmate")
-            print("Hello")
-            print("1")
-            print("2")
-            print(self.getMovingPlayer())
             self.getValidMoves()
             self.validMoves = self.getLegalMoves(self.getMovingPlayer())
     def removeEnPassentSquares(self):

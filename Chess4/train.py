@@ -43,19 +43,19 @@ class TrainPipeline():
         self.savingNumber = 50
         self.kl_targ = 0.02
         self.check_freq = 50
-        self.game_batch_num = 10
+        self.game_batch_num = 1500
         self.best_win_ratio = 0.0
         # num of simulations used for the pure mcts, which is used as
         # the opponent to evaluate the trained policy
         self.pure_mcts_playout_num = 1000
         if init_model:
-            print("here1")
+            #print("here1")
             # start training from an initial policy-value net
             self.policy_value_net = PolicyValueNet(self.board_width,
                                                    self.board_height,
                                                    model_file=init_model)
         else:
-            print("here2")
+            #print("here2")
             # start training from a new policy-value net
             self.policy_value_net = PolicyValueNet(self.board_width,
                                                    self.board_height)
@@ -161,7 +161,11 @@ class TrainPipeline():
         current_mcts_player = MCTSPlayer(self.policy_value_net.policy_value_fn,
                                          c_puct=self.c_puct,
                                          n_playout=self.n_playout)
-        best_mcts_player = MCTSPlayer(self.bestPolicy_value_net.policy_value_fn(),
+        if self.bestPolicy_value_net == None:
+            best_mcts_player = MCTS_Pure(c_puct=5,
+                                         n_playout=self.pure_mcts_playout_num)
+        else:
+            best_mcts_player = MCTSPlayer(self.bestPolicy_value_net.policy_value_fn,
                                          c_puct=self.c_puct,
                                          n_playout=self.n_playout)
         win_cnt = defaultdict(int)
@@ -181,6 +185,7 @@ class TrainPipeline():
     def run(self):
         """run the training pipeline"""
         try:
+            saveNoneBestModels = False
             for i in range(self.game_batch_num):
                 self.collect_selfplay_data(self.play_batch_size)
                 print("batch i:{}, episode_len:{}".format(
@@ -191,19 +196,19 @@ class TrainPipeline():
                 # and save the model params
                 filePath = ""
                 fileNumber = 0
-                if not os.path.exists(
+                if saveNoneBestModels and  not os.path.exists(
                         "TrainedModels/EveryModel/policyModel%s.model" % fileNumber):  # this is for the first time
                     filePath = "TrainedModels/EveryModel/policyModel" + str(fileNumber) + ".model"
-                while os.path.exists("TrainedModels/EveryModel/policyModel%s.model" % fileNumber):
+                while saveNoneBestModels and os.path.exists("TrainedModels/EveryModel/policyModel%s.model" % fileNumber):
                     fileNumber += 1
                     filePath = "TrainedModels/EveryModel/policyModel" + str(fileNumber) + ".model"
 
-                if i% 2 ==0:
+                if i% 2 ==0 and saveNoneBestModels:
                     self.policy_value_net.save_model(filePath)
                 if (i+1) % self.check_freq == 0:
                     print("current self-play batch: {}".format(i+1))
                     win_ratio = self.policy_evaluate()
-                    self.policy_value_net.save_model('./current_policy.model')
+                    #self.policy_value_net.save_model('./current_policy.model')
                     if win_ratio > 0.55:
                         print("New best policy!!!!!!!!")
                         #self.best_win_ratio = win_ratio
