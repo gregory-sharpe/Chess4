@@ -220,5 +220,9 @@ class TrainPipeline():
 
 
 if __name__ == '__main__':
+    if not os.path.exists("TrainedModels"):
+        os.mkdir("TrainedModels")
+        os.mkdir("TrainedModels/BestModels")
+        os.mkdir("TrainedModels/EveryModel")
     training_pipeline = TrainPipeline()
     training_pipeline.run()
