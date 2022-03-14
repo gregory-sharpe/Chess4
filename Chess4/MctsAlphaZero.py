@@ -213,8 +213,8 @@ class MCTSPlayer(object):
         sensible_moves = board.validMoves
         if sensible_moves == []:
             print("got here")
-        print(board.turn)
-        print(board.validMoves)
+        #print(board.turn)
+        #print(board.validMoves)
         #print(sensible_moves)
         # the pi vector returned by MCTS as in the alphaGo Zero paper
         move_probs = np.zeros(ChessEngine.POSSIBLEMOVES)# This will likely have to be an np of size sensible moves

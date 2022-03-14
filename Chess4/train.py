@@ -1,6 +1,5 @@
 """
-An implementation of the training pipeline of AlphaZero for Gomoku
-@author: Junxiao Song
+An implementation of the training pipeline of AlphaZero adapted from gomoku from Junxiao Song
 """
 
 #from __future__ import print_function
@@ -33,6 +32,9 @@ class TrainPipeline():
         else:
             self.bestPolicy_value_net = None
     def __init__(self, init_model=None):
+        #TODO
+        # Currently it will start with a fresh model and the compare it to the best from previous iterations
+        # once 100k simulations has been reached have it start from the best model and test whether it has improved less frequently
         # params of the board and the game
         self.board_width = 14
         self.board_height = 14
@@ -43,7 +45,7 @@ class TrainPipeline():
         self.lr_multiplier = 1.0  # adaptively adjust the learning rate based on KL
         self.temp = 1.0  # the temperature param
         self.n_playout = 100  # num of simulations for each move
-        self.c_puct = 5
+        self.c_puct = 3
         self.buffer_size = 10000
         self.batch_size = 512  # mini-batch size for training
         self.data_buffer = deque(maxlen=self.buffer_size)
@@ -177,7 +179,7 @@ class TrainPipeline():
         else:
             best_mcts_player = MCTSPlayer(self.bestPolicy_value_net.policy_value_fn,
                                          c_puct=self.c_puct,
-                                         n_playout=100) #self.n_playout)
+                                         n_playout=self.n_playout) #self.n_playout)
         win_cnt = defaultdict(int)
 
         for i in range(n_games):

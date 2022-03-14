@@ -200,7 +200,7 @@ class Game():
                 # reset MCTS root node
                 player.reset_player()
                 return self.gs.gameOver, zip(states, mcts_probs, winners_z)
-    def start_play(self, current_mcts_player, best_mcts_player, start_player=0, is_shown=1):
+    def start_play(self, current_mcts_player, best_mcts_player, start_player=0, is_shown=1,temp=1e-3):
 
 
         """start a game between two players"""
@@ -217,7 +217,9 @@ class Game():
             player_in_turn = current_mcts_player
             if  self.gs.getMovingPlayer().isBestMcts:
                 player_in_turn = best_mcts_player
-            move = player_in_turn.get_action(self.gs)
+            move = player_in_turn.get_action(self.gs,
+                                             temp=temp,
+                                            return_prob=0)
             self.gs.do_move(move)
             if self.gs.gameOver:
                 bestMctsScore = 0

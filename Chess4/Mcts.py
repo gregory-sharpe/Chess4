@@ -1,6 +1,5 @@
 """
 A pure implementation of the Monte Carlo Tree Search (MCTS)
-@author: Junxiao Song
 """
 
 import numpy as np
@@ -92,11 +91,11 @@ class TreeNode(object):
     def is_root(self):
         return self._parent is None
 
-
+#TODO researh c_punct value heuristics
 class MCTS(object):
     """A simple implementation of Monte Carlo Tree Search."""
 
-    def __init__(self, policy_value_fn, c_puct=5, n_playout=100):# was 10000
+    def __init__(self, policy_value_fn, c_puct=3, n_playout=100):# was 10000
         """
         policy_value_fn: a function that takes in a board state and outputs
             a list of (action, probability) tuples and also a score in [-1, 1]
@@ -180,7 +179,7 @@ class MCTS(object):
 
 class MCTSPlayer(object):
     """AI player based on MCTS"""
-    def __init__(self, c_puct=5, n_playout=500):
+    def __init__(self, c_puct=3, n_playout=500):
         self.mcts = MCTS(policy_value_fn, c_puct, n_playout)
 
     def set_player_ind(self, p):
