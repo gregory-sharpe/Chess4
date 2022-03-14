@@ -121,6 +121,7 @@ class PolicyValueNet():
             log_act_probs, value = self.policy_value_net(
                 Variable(torch.from_numpy(current_state)).cuda().float())
             act_probs = np.exp(log_act_probs.data.cpu().numpy().flatten())
+            legal_positions_ = list(map(lambda x: x.encode(), legal_positions))
         else:
             #x_act x_val
             log_act_probs, value = self.policy_value_net(
