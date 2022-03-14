@@ -22,11 +22,20 @@ import time
 
 
 class TrainPipeline():
+    def setBestFile(self):
+        list_of_files = glob.glob('TrainedModels/BestModels/*')  # * means all if need specific format then *.csv
+        # requires atleast 1 file to be in best Models
+        if len(list_of_files)>0:
+            bestFile = max(list_of_files, key=os.path.getctime)
+            self.bestPolicy_value_net = PolicyValueNet(self.board_width,
+                                               self.board_height,
+                                               model_file=bestFile)
+        else:
+            self.bestPolicy_value_net = None
     def __init__(self, init_model=None):
         # params of the board and the game
         self.board_width = 14
         self.board_height = 14
-        self.n_in_row = 4
         self.board = GameState()
         self.game = Game(self.board)
         # training params
@@ -42,7 +51,7 @@ class TrainPipeline():
         self.epochs = 5  # num of train_steps for each update
         self.savingNumber = 50
         self.kl_targ = 0.02
-        self.check_freq = 50
+        self.check_freq = 100
         self.game_batch_num = 1500
         self.best_win_ratio = 0.0
         # num of simulations used for the pure mcts, which is used as
@@ -153,7 +162,7 @@ class TrainPipeline():
                         explained_var_new))
         return loss, entropy
 
-    def policy_evaluate(self, n_games=10):
+    def policy_evaluate(self, n_games=100):
         """
         Evaluate the trained policy by playing against the pure MCTS player
         Note: this is only for monitoring the progress of training
@@ -167,7 +176,7 @@ class TrainPipeline():
         else:
             best_mcts_player = MCTSPlayer(self.bestPolicy_value_net.policy_value_fn,
                                          c_puct=self.c_puct,
-                                         n_playout=self.n_playout)
+                                         n_playout=100) #self.n_playout)
         win_cnt = defaultdict(int)
 
         for i in range(n_games):
@@ -209,12 +218,13 @@ class TrainPipeline():
                     print("current self-play batch: {}".format(i+1))
                     win_ratio = self.policy_evaluate()
                     #self.policy_value_net.save_model('./current_policy.model')
-                    if win_ratio > 0.55:
+                    if win_ratio > 0.55 or self.bestPolicy_value_net == None:
                         print("New best policy!!!!!!!!")
                         #self.best_win_ratio = win_ratio
                         # update the best_policy
                         bestFilePath = "TrainedModels/BestModels/policyModel" + str(fileNumber) + ".model"
                         self.policy_value_net.save_model(bestFilePath)
+                        self.setBestFile()
         except KeyboardInterrupt:
             print('\n\rquit')
 

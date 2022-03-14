@@ -147,32 +147,32 @@ class MCTS(object):
         temp: temperature parameter in (0, 1] controls the level of exploration
         """
         start = time.time()
-        t1,t2 = (),()
-        t3,t4 = (),()
+        #t1,t2 = (),()
+        #t3,t4 = (),()
         for n in range(self._n_playout):
             t1 = time.time()
             state_copy = copy.deepcopy(state)
             state_copy.fakeGame = True
-            t2 = time.time()
-            t3 = time.time()
+            #t2 = time.time()
+            #t3 = time.time()
             #t2 = time.time()
             #print("time to take to deepcopy = "+ str(t2-t1))
             #print("time to take to deepcopy 400 = " +str((t2-t1)*400))
             self._playout(state_copy)
-            t4 = time.time()
+        #t4 = time.time()
 
         end = time.time()
-        print(end-start)
-        print(((t2-t1)*399)/(end-start))# roughly 83% of the time is spent creating deep copies
-        print(((t4-t3)*399)/(end-start))
+        #print(end-start)
+        #print(((t2-t1)*399)/(end-start))# roughly 83% of the time is spent creating deep copies
+        #print(((t4-t3)*399)/(end-start))
         # calc the move probabilities based on visit counts at the root node
-        print("time 2 ")
+        #print("time 2 ")
 
-        start2 = time.time()
+        #start2 = time.time()
         act_visits = [(act, node._n_visits)
                       for act, node in self._root._children.items()]
         end2 = time.time()
-        print(end2-start2)
+        #print(end2-start2)
         #print(self._root._children)
         #print(act_visits)
         acts, visits = zip(*act_visits)
