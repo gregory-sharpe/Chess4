@@ -191,7 +191,7 @@ class GameState():
         boardStatesWithPlayerWinScore = []
         for boardState in self.boards:
             boardStatesWithPlayerWinScore.append((boardState,self.gameOutcome))
-        print(self.gameOutcome)
+        #print(self.gameOutcome)
     def getGameOutcome(self):
         return ValueNetworkfunctions.getValue(self.allPlayers)
     def update_current_state(self):

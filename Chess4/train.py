@@ -42,7 +42,7 @@ class TrainPipeline():
         self.learn_rate = 2e-3
         self.lr_multiplier = 1.0  # adaptively adjust the learning rate based on KL
         self.temp = 1.0  # the temperature param
-        self.n_playout = 400  # num of simulations for each move
+        self.n_playout = 100  # num of simulations for each move
         self.c_puct = 5
         self.buffer_size = 10000
         self.batch_size = 512  # mini-batch size for training
@@ -51,23 +51,24 @@ class TrainPipeline():
         self.epochs = 5  # num of train_steps for each update
         self.savingNumber = 50
         self.kl_targ = 0.02
-        self.check_freq = 100
+        self.check_freq = 50
         self.game_batch_num = 1500
         self.best_win_ratio = 0.0
         # num of simulations used for the pure mcts, which is used as
         # the opponent to evaluate the trained policy
-        self.pure_mcts_playout_num = 1000
+        self.pure_mcts_playout_num = 100
         if init_model:
             #print("here1")
             # start training from an initial policy-value net
             self.policy_value_net = PolicyValueNet(self.board_width,
                                                    self.board_height,
-                                                   model_file=init_model)
+                                                   model_file=init_model,use_gpu=True
+                                                   )
         else:
             #print("here2")
             # start training from a new policy-value net
             self.policy_value_net = PolicyValueNet(self.board_width,
-                                                   self.board_height)
+                                                   self.board_height,use_gpu=True)
         self.mcts_player = MCTSPlayer(self.policy_value_net.policy_value_fn,
                                       c_puct=self.c_puct,
                                       n_playout=self.n_playout,
@@ -78,7 +79,7 @@ class TrainPipeline():
             bestFile = max(list_of_files, key=os.path.getctime)
             self.bestPolicy_value_net = PolicyValueNet(self.board_width,
                                                self.board_height,
-                                               model_file=bestFile)
+                                               model_file=bestFile,use_gpu=True)
         else:
             self.bestPolicy_value_net = None
 
@@ -216,15 +217,21 @@ class TrainPipeline():
                     self.policy_value_net.save_model(filePath)
                 if (i+1) % self.check_freq == 0:
                     print("current self-play batch: {}".format(i+1))
-                    win_ratio = self.policy_evaluate()
-                    #self.policy_value_net.save_model('./current_policy.model')
-                    if win_ratio > 0.55 or self.bestPolicy_value_net == None:
-                        print("New best policy!!!!!!!!")
-                        #self.best_win_ratio = win_ratio
-                        # update the best_policy
+                    if self.bestPolicy_value_net!=None:
+                        win_ratio = self.policy_evaluate()
+                        #self.policy_value_net.save_model('./current_policy.model')
+                        if win_ratio > 0.55 or self.bestPolicy_value_net == None:
+                            print("New best policy!!!!!!!!")
+                            #self.best_win_ratio = win_ratio
+                            # update the best_policy
+                            bestFilePath = "TrainedModels/BestModels/policyModel" + str(fileNumber) + ".model"
+                            self.policy_value_net.save_model(bestFilePath)
+                            self.setBestFile()
+                    else:
                         bestFilePath = "TrainedModels/BestModels/policyModel" + str(fileNumber) + ".model"
                         self.policy_value_net.save_model(bestFilePath)
                         self.setBestFile()
+
         except KeyboardInterrupt:
             print('\n\rquit')
 
