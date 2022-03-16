@@ -98,8 +98,7 @@ class Game():
         self.isDisplayed = isDisplayed
         self.gs = ChessEngine.GameState()
 
-
-    def startGame(self):
+    def startGame(self,mcts = None):
         print("pygame initisialised")
         screen = p.display.set_mode((WIDTH, HEIGHT))
         screen.fill(p.Color("white"))
@@ -111,22 +110,25 @@ class Game():
         running = True
         sqSelected = ()
         CurrentPlayerClickFromTo = []
-
+        temp = 1e-3
         while running:
             player = gs.getMovingPlayer()
             for e in p.event.get():
                 if e.type == p.QUIT:
                     running = False
-                if not gs.gameOver and not player.isHumanPlaying and not player.isMcts:
+                player = gs.getMovingPlayer()
+                if not gs.gameOver and not player.isHumanPlaying and (not player.isMcts or mcts == None ):
 
                     if len(gs.validMoves) == 0:
-                        gs.removePlayer(gs.getMovingPlayer())
+                        gs.removePlayer(gs.getMovingPlayer()) #screen This potentially should be removed
                     else:
                         AIMove = AI.findRandomMove(gs.validMoves)
                         gs.makeMove(AIMove)
                     moveMade = True
                 elif not gs.gameOver and not player.isHumanPlaying and player.isMcts:
-                    True
+                    move = mcts.get_action(gs,temp=temp,
+                                                     return_prob=0)
+                    gs.do_move(move)
 
                 elif e.type == p.MOUSEBUTTONDOWN:
                     if not gs.gameOver and player.isHumanPlaying:
@@ -190,14 +192,21 @@ class Game():
             # perform a move
             self.gs.do_move(move)
             states.append(self.gs.currentState)
-            self.gs.finishGame() # remove after testing
+            #self.gs.finishGame() # remove after testing
             #self.gs.getLegalMoves()
             #end, winner = self.board.game_end()
             if self.gs.gameOver:
+
                 print("GameOver")
                 # winner from the perspective of the current player of each state
-                winners_z = self.gs.gameOutcome
-                # reset MCTS root node
+
+                winners_z = np.zeros(len(current_players)) - 1
+                npScore = np.array(self.gs.finalScore)
+                winners = np.where(npScore == max(npScore))
+                for winner in winners[0]:
+                    if winner != -1:
+                        winners_z[np.array(current_players) == ChessEngine.TEAMS[winner]] = 1.0
+
                 player.reset_player()
                 return self.gs.gameOver, zip(states, mcts_probs, winners_z)
     def start_play(self, current_mcts_player, best_mcts_player, start_player=0, is_shown=1,temp=1e-3):

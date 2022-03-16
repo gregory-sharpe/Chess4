@@ -153,11 +153,6 @@ class MCTS(object):
             t1 = time.time()
             state_copy = copy.deepcopy(state)
             state_copy.fakeGame = True
-            #t2 = time.time()
-            #t3 = time.time()
-            #t2 = time.time()
-            #print("time to take to deepcopy = "+ str(t2-t1))
-            #print("time to take to deepcopy 400 = " +str((t2-t1)*400))
             self._playout(state_copy)
         #t4 = time.time()
 

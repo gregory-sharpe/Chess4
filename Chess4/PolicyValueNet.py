@@ -74,11 +74,17 @@ class PolicyValueNet():
         self.board_width = board_width
         self.board_height = board_height
         self.l2_const = 1e-4  # coef of l2 penalty
+        #test1 = self.policy_value_net = Net(board_width, board_height)
+        #net = Resnet.ResNet101(img_channel=len(ChessEngine.channels), num_classes=ChessEngine.POSSIBLEMOVES)
+
         # the policy value net module
+        #net = Resnet.ResNet101(img_channel=len(ChessEngine.channels), num_classes=ChessEngine.POSSIBLEMOVES)
         if self.use_gpu:
             self.policy_value_net = Net(board_width, board_height).cuda()
+            #self.policy_value_net = net.cuda()
         else:
             self.policy_value_net = Net(board_width, board_height)
+            #self.policy_value_net = net
         self.optimizer = optim.Adam(self.policy_value_net.parameters(),
                                     weight_decay=self.l2_const)
 
@@ -122,8 +128,12 @@ class PolicyValueNet():
             legal_positions_ = list(map(lambda x: x.encode(), legal_positions))
         else:
             #x_act x_val
+            #log_act_probs, value = self.policy_value_net(
+            #    Variable(torch.from_numpy(current_state)).float())
+            self.policy_value_net.eval()
             log_act_probs, value = self.policy_value_net(
                 Variable(torch.from_numpy(current_state)).float())
+
             act_probs = np.exp(log_act_probs.data.numpy().flatten())
             legal_positions_ = list(map(lambda x:x.encode(),legal_positions))
             #print(legal_positions_)

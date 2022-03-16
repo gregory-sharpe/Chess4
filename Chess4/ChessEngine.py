@@ -5,6 +5,8 @@ import ChessMain
 # bitmap for each colour 4
 # bitmap each piece + premotedQueen 7
 # bitmap for NullSquare
+#TODO code is likely ineffiecient due to how code in this file was created.
+# need to make it more effiecient
 #12 all together
 import ValueNetworkfunctions
 #4 channels for team,6 channels for piece , 2 channels for empty square and null square
@@ -33,7 +35,7 @@ NULLSQUARE = 7  # the black squares no piece can move to
 EMPTYSQUARE = 0
 POSSIBLEMOVES = 14*14*(8*13+8) # starting square *(queen directions * magnitude + knightDirections)
 
-REDTURN = 100
+REDTURN = 100 # if this constant value is changed create a function that takes the team and outputs the turn channel
 REDKINGCASTLE = 101
 REDQUEENCASTLE = 102
 REDSCORE = 103
@@ -101,7 +103,6 @@ channels = {
 
     FIFTYMOVEREPEAT:31
     # need a channel for premoted pawns
-    # need a channel for whos turn it is to move 
 }
 
 """
@@ -152,11 +153,10 @@ class Player():
     checks = []
 class GameState():
     def __init__(self):
-        self.fakeGame = False
+        self.fakeGame = False # simulatetd games
         self.board = np.zeros((14, 14))
         self.height = 14
         self.width = 14
-        self.boards= []
         self.gameOver = False
         self.setBoard()
         self.turnIndex = 0
@@ -166,52 +166,33 @@ class GameState():
         self.currentPlayer = ()
         self.enPassentSquares = []
         self.RedPlayer = Player(RED, RedKingPosition)
-        self.RedPlayer.isHumanPlaying = False
         self.BluePlayer = Player(BLUE, BlueKingPosition)
         self.YellowPlayer = Player(YELLOW, YellowKingPosition)
-        self.GreenPlayer = Player(GREEN, GreenKingPosition)
         self.GreenPlayer = Player(GREEN, GreenKingPosition)
         self.allPlayers = [self.RedPlayer,self.BluePlayer,self.YellowPlayer,self.GreenPlayer]
         self.getValidMoves()
         self.fiftyRuleRepition = 0
         self.movesMade = 0
         self.MaxMoveLimit = 200
+        self.MaxFakeGameDepth = 100
         self.gameOutcome = ()
+        self.finalScore = []
         self.currentState = np.zeros((len(channels), 14, 14))
         self.update_current_state()
         self.availables= self.validMoves
     def finishGame(self):
         self.gameOver = True
         players = self.allPlayers
-        #print("Raw Scores:" + str(ValueNetworkfunctions.getValue(players,valueFunction="Raw")))
-        #print("Centered:" + str(ValueNetworkfunctions.getValue(players,valueFunction="Centered")))
-        #print("Percentage Range 1:"+ str(ValueNetworkfunctions.getValue(players,valueFunction="PercentageRange1")))
-        #print("Percentage Range 2" + str(ValueNetworkfunctions.getValue(players, valueFunction="PercentageRange2")))
         self.gameOutcome = ValueNetworkfunctions.getValue(players)
-        boardStatesWithPlayerWinScore = []
-        for boardState in self.boards:
-            boardStatesWithPlayerWinScore.append((boardState,self.gameOutcome))
-        #print(self.gameOutcome)
+        self.finalScore = ValueNetworkfunctions.getValue(players,valueFunction="Raw")
     def getGameOutcome(self):
         return ValueNetworkfunctions.getValue(self.allPlayers)
     def update_current_state(self):
-
-        #0,1,2,3 = RED,Blue,Yellow,Green
-        #4,5,6,7,8,9 = Pawn ,Knight ,Rook ,Bishop,Queen,King
-        #10 = NullSquare
-        # inactive players will have a -1 in their team channel
-        # update the turn channels
-        ##BLUETURN = 200
-        ##BLUEKINGCASTLE = 201
-        ##BLUEQUEENCASTLE = 202
-        ##BLUESCORE = 203
-        ##BLUEACTIVE = 204
         self.currentState[channels[FIFTYMOVEREPEAT]] = self.fiftyRuleRepition  # TURN
-
         for team in TEAMS:
             player = self.getPlayerFromTeam(team)
             if team == self.turn:
-                self.currentState[channels[team*10]] = 1 # TURN
+                self.currentState[channels[team*10]] = 1 # team * 10 gives the turn channel.
             else:
                 self.currentState[channels[team * 10]] = 0
 
@@ -236,18 +217,6 @@ class GameState():
                 type = self.pieceTypeFromNumber(piece)
                 self.currentState[channels[team]][r][c] = 1
                 self.currentState[channels[type]][r][c] = 1
-    def update_currentStateRC4FeatureBoards(self,r,c):
-        piece = self.board[r][c]
-        if piece != EMPTYSQUARE and piece!= NULLSQUARE:
-            team = self.pieceTeamFromNumber(piece)
-            if self.getPlayerFromTeam(team).playing:
-                self.currentState[channels[team]][r][c] = 1
-    def getBoardStateInBits(self):
-        # bit boards for type. 8
-        # bit boards for inactive pieces.2
-        # bit boards for teams.4
-        # bit boards for
-        pass
     def getMovingPlayer(self):
         if self.turn == RED:
             return self.RedPlayer
@@ -271,16 +240,13 @@ class GameState():
                                       [0, 0, 0, ROOK, KNIGHT, BISHOP, QUEEN, KING, BISHOP, KNIGHT, ROOK, 0, 0, 0]])
         rStartingFormation = startingFormation + RED * np.ones((2, 14))
         rStartingFormation = np.pad(rStartingFormation, ((12, 0), (0, 0)), mode='constant', constant_values=0)
-
         bStartingFormation = np.transpose(startingFormation) + BLUE * np.ones((14, 2))
         bStartingFormation = np.fliplr(bStartingFormation)
         bStartingFormation = np.flipud(bStartingFormation)
         bStartingFormation = np.pad(bStartingFormation, ((0, 0), (0, 12)), mode='constant', constant_values=0)
-
         yStartingFormation = np.flipud(startingFormation) + YELLOW * np.ones((2, 14))
         yStartingFormation = np.fliplr(yStartingFormation)
         yStartingFormation = np.pad(yStartingFormation, ((0, 12), (0, 0)), mode='constant', constant_values=0)
-
         gStartingFormation = np.transpose(startingFormation) + GREEN * np.ones((14, 2))
         gStartingFormation = np.pad(gStartingFormation, ((0, 0), (12, 0)), mode='constant', constant_values=0)
         startingFormation = rStartingFormation + bStartingFormation + yStartingFormation + gStartingFormation
@@ -504,6 +470,7 @@ class GameState():
             elif team == GREEN:
                 self.GreenPlayer.KingLocation = EndSquare
     def undoMove(self):
+        # this was used for testing in the early stages. it stopped being updated after the core fuctionalities were made
         if len(self.moveLog) != 0:
             move = self.moveLog.pop()
             startSq = (move.startRow, move.starCol)
@@ -934,12 +901,6 @@ class GameState():
         #    self.gameOver = True
         #if not wasKingCapturedOnAnotherTurn:
         #    self.finishTurn()
-    def deactivatePlayer(self,team):
-        for r in range(14):
-            for c in range(14):
-                piece = self.board[r][c]
-                if piece != EMPTYSQUARE and piece !=NULLSQUARE and self.pieceTeamFromNumber(piece) == team:
-                    self.board[r][c] = self.DeactivatePieceFromNumber(piece)
     def checkMatePlayer(self,player:Player):
         #print("player checkmated")
         self.scorePlayersThatCheckmatedPlayer(player)
@@ -1036,13 +997,6 @@ class GameState():
         return 1
 
     def finishTurn(self):
-        #currentState = self.board.copy()
-        #self.boards.append(currentState)
-        # the issue could come from when a player is checkmated/stalemated. finish turn is called from a funciton within this finish turn scope and then the code contines from here.
-        # if player is active continue with the rest of the code below
-        # if not repeat the code above
-        # look into the logic of finish turn and how it works when it is called from other parts of the code. checkmate/stalemate
-        # try to make the code work without using finish turn from multiple areas to avoid scope issues when backtracking
         activePLayers = 0
         for player in self.allPlayers:
             if player.playing:
@@ -1198,14 +1152,20 @@ class Move():
         encoding = possibleMoves*startingSquareEncoding+moveEncoding
         return encoding
 
-def createNPArray(x,y):
-    square_state = np.zeros((4, 14, 14))
-    square_state[1] = True
-    print(square_state[1])
-    square_state[0][0][3:7] = True# yellowking
-    square_state[0][0][7:11] = 2# yellowqueen
-    square_state[0][13][7:11] = 1
-    square_state[0][13][3:7] = 2
-    print(square_state[0])
+def createNPArray(current_players,score):
+    winners_z = np.zeros(len(current_players))-1
+    npScore = np.array(score)
+    winners = np.where(npScore == max(npScore))
+    print(winners[0])
+    for winner in winners[0]:
+        if winner != -1:
+            winners_z[np.array(current_players) == TEAMS[winner]] = 1.0
+    print(winners_z)
+
+def getWinners(scores):
+    return np.argmax(scores)
 if __name__ == "__main__" :
-    createNPArray(4,2)
+
+    current_players = [10,20,30,40,10,20,30,40,10,20,30,40,10,20,30,10,20,30]
+    createNPArray(current_players,[1,2,3,4])
+
