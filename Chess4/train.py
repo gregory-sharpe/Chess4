@@ -3,6 +3,7 @@ An implementation of the training pipeline of AlphaZero adapted from gomoku from
 """
 
 #from __future__ import print_function
+import multiprocessing
 import random
 import numpy as np
 from collections import defaultdict, deque
@@ -31,7 +32,7 @@ class TrainPipeline():
                                                model_file=bestFile)
         else:
             self.bestPolicy_value_net = None
-    def __init__(self, init_model=None,CPUCores = 1):
+    def __init__(self, init_model=None):
         #TODO
         # Currently it will start with a fresh model and the compare it to the best from previous iterations
         # once 100k simulations has been reached have it start from the best model and test whether it has improved less frequently
@@ -56,7 +57,7 @@ class TrainPipeline():
         self.check_freq = 50
         self.game_batch_num = 1500
         self.best_win_ratio = 0.0
-        self.CPUprocessors = CPUCores
+        self.CPUCount = multiprocessing.cpu_count()
         # num of simulations used for the pure mcts, which is used as
         # the opponent to evaluate the trained policy
         self.pure_mcts_playout_num = 100
@@ -235,7 +236,7 @@ class TrainPipeline():
         try:
 
             saveNoneBestModels = False
-            executor = concurrent.futures.ProcessPoolExecutor(self.CPUprocessors)
+            executor = concurrent.futures.ProcessPoolExecutor(self.CPUCount)
             futures = [executor.submit(self.runSelfPlayInParralel, i) for i in range(self.game_batch_num)]
             concurrent.futures.wait(futures)
 
