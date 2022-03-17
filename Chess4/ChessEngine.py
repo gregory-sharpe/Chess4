@@ -7,6 +7,7 @@ import ChessMain
 # bitmap for NullSquare
 #TODO code is likely ineffiecient due to how code in this file was created.
 # need to make it more effiecient
+# the code is also quite messy and while functional and no revisions are needed it is annoying to navigate
 #12 all together
 import ValueNetworkfunctions
 #4 channels for team,6 channels for piece , 2 channels for empty square and null square
@@ -105,15 +106,6 @@ channels = {
     # need a channel for premoted pawns
 }
 
-"""
-channels = {
-    RED: 0,
-    BLUE: 1,
-    YELLOW: 2,
-    GREEN: 3
-}
-"""
-
 TEAMS = [RED, BLUE, YELLOW, GREEN]
 TEAMSs = ["r", "b", "y", "g"]
 PIECES = [PAWN, ROOK, BISHOP, QUEEN, KING, KNIGHT]
@@ -136,7 +128,7 @@ class Player():
         self.canCastleKingSide =True
         self.Score = 0
         self.isHumanPlaying = False
-        self.isMcts = False
+        self.isMcts = True
         self.isBestMcts = False
         self.playing = True
     def __str__(self):
@@ -167,7 +159,9 @@ class GameState():
         self.enPassentSquares = []
         self.RedPlayer = Player(RED, RedKingPosition)
         self.BluePlayer = Player(BLUE, BlueKingPosition)
+        self.RedPlayer.isMcts = False
         self.YellowPlayer = Player(YELLOW, YellowKingPosition)
+        self.YellowPlayer.isMcts = False
         self.GreenPlayer = Player(GREEN, GreenKingPosition)
         self.allPlayers = [self.RedPlayer,self.BluePlayer,self.YellowPlayer,self.GreenPlayer]
         self.getValidMoves()

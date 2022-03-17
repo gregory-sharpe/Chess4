@@ -13,7 +13,7 @@ from MctsAlphaZero import MCTSPlayer
 from PolicyValueNet import PolicyValueNet  # Theano and Lasagne
 import os
 import glob
-
+import concurrent.futures
 import time
 # from policy_value_net_pytorch import PolicyValueNet  # Pytorch
 # from policy_value_net_tensorflow import PolicyValueNet # Tensorflow
@@ -31,7 +31,7 @@ class TrainPipeline():
                                                model_file=bestFile)
         else:
             self.bestPolicy_value_net = None
-    def __init__(self, init_model=None):
+    def __init__(self, init_model=None,CPUCores = 1):
         #TODO
         # Currently it will start with a fresh model and the compare it to the best from previous iterations
         # once 100k simulations has been reached have it start from the best model and test whether it has improved less frequently
@@ -56,6 +56,7 @@ class TrainPipeline():
         self.check_freq = 50
         self.game_batch_num = 1500
         self.best_win_ratio = 0.0
+        self.CPUprocessors = CPUCores
         # num of simulations used for the pure mcts, which is used as
         # the opponent to evaluate the trained policy
         self.pure_mcts_playout_num = 100
@@ -64,13 +65,13 @@ class TrainPipeline():
             # start training from an initial policy-value net
             self.policy_value_net = PolicyValueNet(self.board_width,
                                                    self.board_height,
-                                                   model_file=init_model,use_gpu=True
+                                                   model_file=init_model,use_gpu=False
                                                    )
         else:
             #print("here2")
             # start training from a new policy-value net
             self.policy_value_net = PolicyValueNet(self.board_width,
-                                                   self.board_height,use_gpu=True)
+                                                   self.board_height,use_gpu=False)
         self.mcts_player = MCTSPlayer(self.policy_value_net.policy_value_fn,
                                       c_puct=self.c_puct,
                                       n_playout=self.n_playout,
@@ -81,7 +82,7 @@ class TrainPipeline():
             bestFile = max(list_of_files, key=os.path.getctime)
             self.bestPolicy_value_net = PolicyValueNet(self.board_width,
                                                self.board_height,
-                                               model_file=bestFile,use_gpu=True)
+                                               model_file=bestFile,use_gpu=False)
         else:
             self.bestPolicy_value_net = None
 
@@ -194,47 +195,54 @@ class TrainPipeline():
                 self.pure_mcts_playout_num,
                 win_cnt[1], win_cnt[2], win_cnt[-1]))
         return win_ratio
+    def runSelfPlayInParralel(self,i,saveNoneBestModels = False):
+        self.collect_selfplay_data(self.play_batch_size)
+        print("batch i:{}, episode_len:{}".format(
+            i + 1, self.episode_len))
+        if len(self.data_buffer) > self.batch_size:
+            loss, entropy = self.policy_update()
+        # check the performance of the current model,
+        # and save the model params
+        filePath = ""
+        fileNumber = 0
+        if saveNoneBestModels and not os.path.exists(
+                "TrainedModels/EveryModel/policyModel%s.model" % fileNumber):  # this is for the first time
+            filePath = "TrainedModels/EveryModel/policyModel" + str(fileNumber) + ".model"
+        while saveNoneBestModels and os.path.exists("TrainedModels/EveryModel/policyModel%s.model" % fileNumber):
+            fileNumber += 1
+            filePath = "TrainedModels/EveryModel/policyModel" + str(fileNumber) + ".model"
 
+        if i % 2 == 0 and saveNoneBestModels:
+            self.policy_value_net.save_model(filePath)
+        if (i + 1) % self.check_freq == 0:
+            print("current self-play batch: {}".format(i + 1))
+            if self.bestPolicy_value_net != None:
+                win_ratio = self.policy_evaluate()
+                # self.policy_value_net.save_model('./current_policy.model')
+                if win_ratio > 0.55 or self.bestPolicy_value_net == None:
+                    print("New best policy!!!!!!!!")
+                    # self.best_win_ratio = win_ratio
+                    # update the best_policy
+                    bestFilePath = "TrainedModels/BestModels/policyModel" + str(fileNumber) + ".model"
+                    self.policy_value_net.save_model(bestFilePath)
+                    self.setBestFile()
+            else:
+                bestFilePath = "TrainedModels/BestModels/policyModel" + str(fileNumber) + ".model"
+                self.policy_value_net.save_model(bestFilePath)
+                self.setBestFile()
     def run(self):
         """run the training pipeline"""
         try:
+
             saveNoneBestModels = False
+            executor = concurrent.futures.ProcessPoolExecutor(self.CPUprocessors)
+            futures = [executor.submit(self.runSelfPlayInParralel, i) for i in range(self.game_batch_num)]
+            concurrent.futures.wait(futures)
+
+            """
             for i in range(self.game_batch_num):
-                self.collect_selfplay_data(self.play_batch_size)
-                print("batch i:{}, episode_len:{}".format(
-                        i+1, self.episode_len))
-                if len(self.data_buffer) > self.batch_size:
-                    loss, entropy = self.policy_update()
-                # check the performance of the current model,
-                # and save the model params
-                filePath = ""
-                fileNumber = 0
-                if saveNoneBestModels and  not os.path.exists(
-                        "TrainedModels/EveryModel/policyModel%s.model" % fileNumber):  # this is for the first time
-                    filePath = "TrainedModels/EveryModel/policyModel" + str(fileNumber) + ".model"
-                while saveNoneBestModels and os.path.exists("TrainedModels/EveryModel/policyModel%s.model" % fileNumber):
-                    fileNumber += 1
-                    filePath = "TrainedModels/EveryModel/policyModel" + str(fileNumber) + ".model"
-
-                if i% 2 ==0 and saveNoneBestModels:
-                    self.policy_value_net.save_model(filePath)
-                if (i+1) % self.check_freq == 0:
-                    print("current self-play batch: {}".format(i+1))
-                    if self.bestPolicy_value_net!=None:
-                        win_ratio = self.policy_evaluate()
-                        #self.policy_value_net.save_model('./current_policy.model')
-                        if win_ratio > 0.55 or self.bestPolicy_value_net == None:
-                            print("New best policy!!!!!!!!")
-                            #self.best_win_ratio = win_ratio
-                            # update the best_policy
-                            bestFilePath = "TrainedModels/BestModels/policyModel" + str(fileNumber) + ".model"
-                            self.policy_value_net.save_model(bestFilePath)
-                            self.setBestFile()
-                    else:
-                        bestFilePath = "TrainedModels/BestModels/policyModel" + str(fileNumber) + ".model"
-                        self.policy_value_net.save_model(bestFilePath)
-                        self.setBestFile()
-
+                self.runSelfPlayInParralel(i)
+            """
         except KeyboardInterrupt:
             print('\n\rquit')
 

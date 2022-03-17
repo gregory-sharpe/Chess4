@@ -32,5 +32,7 @@ if __name__ == "__main__" :
         bestMCTSPlayer = MCTSPlayer(bestPolicy.policy_value_fn,
                                          c_puct=c_punct,
                                          n_playout=n_playout)
+        #bestMCTSPlayer = MCTS_Pure(c_puct=5,
+        #                             n_playout=100)
     g.startGame(bestMCTSPlayer)
     #main()

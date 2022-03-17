@@ -126,6 +126,9 @@ class Game():
                         gs.makeMove(AIMove)
                     moveMade = True
                 elif not gs.gameOver and not player.isHumanPlaying and player.isMcts:
+                    #move = mcts.get_action(gs,temp=temp,
+                    #                                 return_prob=0)
+                    #move = mcts.get_action(gs)
                     move = mcts.get_action(gs,temp=temp,
                                                      return_prob=0)
                     gs.do_move(move)
