@@ -32,10 +32,6 @@ class Net(nn.Module):
         self.conv3 = nn.Conv2d(64, 128, kernel_size=3, padding=1)
         # action policy layers
         self.act_conv1 = nn.Conv2d(128,len(ChessEngine.channels), kernel_size=1)
-        #self.act_fc1 = nn.Linear(4 * board_width * board_height,
-        #                         board_width * board_height)
-        #self.act_fc1 = nn.Linear(len(ChessEngine.channels) * board_width * board_height,
-        #                         board_width * board_height)#possible
         self.act_fc1 = nn.Linear(len(ChessEngine.channels) * board_width * board_height,
                                  ChessEngine.POSSIBLEMOVES)
         # state value layers
@@ -74,11 +70,6 @@ class PolicyValueNet():
         self.board_width = board_width
         self.board_height = board_height
         self.l2_const = 1e-4  # coef of l2 penalty
-        #test1 = self.policy_value_net = Net(board_width, board_height)
-        #net = Resnet.ResNet101(img_channel=len(ChessEngine.channels), num_classes=ChessEngine.POSSIBLEMOVES)
-
-        # the policy value net module
-        #net = Resnet.ResNet101(img_channel=len(ChessEngine.channels), num_classes=ChessEngine.POSSIBLEMOVES)
         if self.use_gpu:
             self.policy_value_net = Net(board_width, board_height).cuda()
             #self.policy_value_net = net.cuda()
@@ -103,7 +94,8 @@ class PolicyValueNet():
             act_probs = np.exp(log_act_probs.data.cpu().numpy())
             return act_probs, value.data.cpu().numpy()
         else:
-            state_batch = Variable(torch.FloatTensor(state_batch))
+            #state_batch = Variable(torch.FloatTensor(state_batch)) # UserWarning: Creating a tensor from a list of numpy.ndarrays is extremely slow. Please consider converting the list to a single numpy.ndarray with numpy.array() before converting to a tensor. (Triggered internally at  ..\torch\csrc\utils\tensor_new.cpp:201.)
+            state_batch = Variable(torch.FloatTensor(np.ndarray(state_batch)))
             log_act_probs, value = self.policy_value_net(state_batch)
             act_probs = np.exp(log_act_probs.data.numpy())
             return act_probs, value.data.numpy()
@@ -127,9 +119,6 @@ class PolicyValueNet():
             act_probs = np.exp(log_act_probs.data.cpu().numpy().flatten())
             legal_positions_ = list(map(lambda x: x.encode(), legal_positions))
         else:
-            #x_act x_val
-            #log_act_probs, value = self.policy_value_net(
-            #    Variable(torch.from_numpy(current_state)).float())
             self.policy_value_net.eval()
             log_act_probs, value = self.policy_value_net(
                 Variable(torch.from_numpy(current_state)).float())
@@ -138,9 +127,6 @@ class PolicyValueNet():
             legal_positions_ = list(map(lambda x:x.encode(),legal_positions))
             #print(legal_positions_)
 
-            # there must be (14*14)*(14*14)
-            # because legal positions is not an integer there are issues.
-            test1 = list(act_probs)
         act_probs = zip(legal_positions, act_probs[legal_positions_])
         value = value.data[0][0]
         return act_probs, value

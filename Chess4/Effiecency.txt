@@ -1,0 +1,7 @@
+for the last simulation in the loop it takes 0.03seconds (this uses copy.deepcopy which is supposedly very slow)
+to complete the function that calls 200 simulations it takes 5.5 seconds average
+copying only took 0.02 percent of a single simulation time cnotrary to my beleif that it was the deep copy that was too ineffiecint
+the playout function took 0.97 of the time of a single simulation.
+in the playout function:
+there was a correlation where when the get_move function took longer than normal the loop took longer as well
+policy(state )lookup was fairly consistant at 0.012. almost all of its time was from the logarithmic function

@@ -3,7 +3,11 @@ An implementation of the training pipeline of AlphaZero adapted from gomoku from
 """
 
 #from __future__ import print_function
-import multiprocessing
+import torch.multiprocessing
+try:
+     torch.multiprocessing.set_start_method('spawn')
+except RuntimeError:
+    pass
 import random
 import numpy as np
 from collections import defaultdict, deque
@@ -15,10 +19,13 @@ from PolicyValueNet import PolicyValueNet  # Theano and Lasagne
 import os
 import glob
 import concurrent.futures
+from concurrent.futures import ProcessPoolExecutor
+from multiprocessing import Process, Manager
 import time
 # from policy_value_net_pytorch import PolicyValueNet  # Pytorch
 # from policy_value_net_tensorflow import PolicyValueNet # Tensorflow
 # from policy_value_net_keras import PolicyValueNet # Keras
+
 
 
 class TrainPipeline():
@@ -45,19 +52,20 @@ class TrainPipeline():
         self.learn_rate = 2e-3
         self.lr_multiplier = 1.0  # adaptively adjust the learning rate based on KL
         self.temp = 1.0  # the temperature param
-        self.n_playout = 100  # num of simulations for each move
+        self.n_playout = 5  # num of simulations for each move
         self.c_puct = 3
-        self.buffer_size = 10000
+        self.buffer_size = 10000 # change back to 10000
         self.batch_size = 512  # mini-batch size for training
         self.data_buffer = deque(maxlen=self.buffer_size)
+
         self.play_batch_size = 1
         self.epochs = 5  # num of train_steps for each update
         self.savingNumber = 50
         self.kl_targ = 0.02
         self.check_freq = 50
-        self.game_batch_num = 1500
+        self.game_batch_num = 100
         self.best_win_ratio = 0.0
-        self.CPUCount = multiprocessing.cpu_count()
+        self.CPUCount = torch.multiprocessing.cpu_count()
         # num of simulations used for the pure mcts, which is used as
         # the opponent to evaluate the trained policy
         self.pure_mcts_playout_num = 100
@@ -66,13 +74,13 @@ class TrainPipeline():
             # start training from an initial policy-value net
             self.policy_value_net = PolicyValueNet(self.board_width,
                                                    self.board_height,
-                                                   model_file=init_model,use_gpu=False
+                                                   model_file=init_model,use_gpu=torch.cuda.is_available()
                                                    )
         else:
             #print("here2")
             # start training from a new policy-value net
             self.policy_value_net = PolicyValueNet(self.board_width,
-                                                   self.board_height,use_gpu=False)
+                                                   self.board_height,use_gpu=torch.cuda.is_available())
         self.mcts_player = MCTSPlayer(self.policy_value_net.policy_value_fn,
                                       c_puct=self.c_puct,
                                       n_playout=self.n_playout,
@@ -119,7 +127,7 @@ class TrainPipeline():
             self.episode_len = len(play_data)
             # augment the data
             play_data = self.get_equi_data(play_data)
-            self.data_buffer.extend(play_data)
+            self.data_buffer.extend(play_data)# needs a lock
 
     def policy_update(self):
         """update the policy-value net"""
@@ -196,8 +204,12 @@ class TrainPipeline():
                 self.pure_mcts_playout_num,
                 win_cnt[1], win_cnt[2], win_cnt[-1]))
         return win_ratio
+
     def runSelfPlayInParralel(self,i,saveNoneBestModels = False):
         self.collect_selfplay_data(self.play_batch_size)
+        print(i)
+        print(len(self.data_buffer))
+        print()
         print("batch i:{}, episode_len:{}".format(
             i + 1, self.episode_len))
         if len(self.data_buffer) > self.batch_size:
@@ -226,11 +238,75 @@ class TrainPipeline():
                     # update the best_policy
                     bestFilePath = "TrainedModels/BestModels/policyModel" + str(fileNumber) + ".model"
                     self.policy_value_net.save_model(bestFilePath)
-                    self.setBestFile()
+                    self.setBestFile()# this will only happen once
             else:
                 bestFilePath = "TrainedModels/BestModels/policyModel" + str(fileNumber) + ".model"
                 self.policy_value_net.save_model(bestFilePath)
-                self.setBestFile()
+                self.setBestFile()#requires lock
+
+    def runSelfPlayInParralelWithManager(self,selfPlayData,i, saveNoneBestModels=False):
+        self.collect_selfplay_data(self.play_batch_size)
+        print("here 1")
+        selfPlayData.extend(self.data_buffer)
+        print(len(self.data_buffer))
+        print(len(selfPlayData))
+        print("here 2")
+        unproxiedSharedData = list(selfPlayData)
+        if len(selfPlayData)>self.buffer_size*0.75:
+            print("here ")
+            print(self.buffer_size/2)
+            selfPlayData[:] =[]
+        else:
+            self.data_buffer = deque(unproxiedSharedData)
+
+        print("here 4")
+        print(len(self.data_buffer))
+        #selfPlayData.append(self.data_buffer)
+        #self.data_buffer = selfPlayData
+        print(i)
+        print(len(self.data_buffer))
+        print()
+        print("batch i:{}, episode_len:{}".format(
+            i + 1, self.episode_len))
+        if len(self.data_buffer) > self.batch_size:
+            loss, entropy = self.policy_update()
+        # check the performance of the current model,
+        # and save the model params
+        filePath = ""
+        fileNumber = 0
+        if saveNoneBestModels and not os.path.exists(
+                "TrainedModels/EveryModel/policyModel%s.model" % fileNumber):  # this is for the first time
+            filePath = "TrainedModels/EveryModel/policyModel" + str(fileNumber) + ".model"
+        while saveNoneBestModels and os.path.exists("TrainedModels/EveryModel/policyModel%s.model" % fileNumber):
+            fileNumber += 1
+            filePath = "TrainedModels/EveryModel/policyModel" + str(fileNumber) + ".model"
+
+        if i % 2 == 0 and saveNoneBestModels:
+            self.policy_value_net.save_model(filePath)
+        if (i + 1) % self.check_freq == 0:
+            print("current self-play batch: {}".format(i + 1))
+            if self.bestPolicy_value_net != None:
+                win_ratio = self.policy_evaluate()
+                # self.policy_value_net.save_model('./current_policy.model')
+                if win_ratio > 0.55 or self.bestPolicy_value_net == None:
+                    print("New best policy!!!!!!!!")
+                    # self.best_win_ratio = win_ratio
+                    # update the best_policy
+                    bestFilePath = "TrainedModels/BestModels/policyModel" + str(fileNumber) + ".model"
+                    self.policy_value_net.save_model(bestFilePath)
+                    self.setBestFile()  # this will only happen once
+            else:
+                bestFilePath = "TrainedModels/BestModels/policyModel" + str(fileNumber) + ".model"
+                self.policy_value_net.save_model(bestFilePath)
+                self.setBestFile()  # requires lock
+
+    def runWithmanager(self):
+        with torch.multiprocessing.Manager() as manager:
+            executor = ProcessPoolExecutor(4)
+            mlist = manager.list()
+            futures = [executor.submit(self.runSelfPlayInParralelWithManager,mlist, i) for i in range(self.game_batch_num)]
+            executor.shutdown()
+
     def run(self):
         """run the training pipeline"""
         try:
@@ -254,4 +330,5 @@ if __name__ == '__main__':
         os.mkdir("TrainedModels/BestModels")
         os.mkdir("TrainedModels/EveryModel")
     training_pipeline = TrainPipeline()
-    training_pipeline.run()
+    #training_pipeline.run()
+    training_pipeline.runWithmanager()

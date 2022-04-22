@@ -157,11 +157,6 @@ class MCTS(object):
         #t4 = time.time()
 
         end = time.time()
-        #print(end-start)
-        #print(((t2-t1)*399)/(end-start))# roughly 83% of the time is spent creating deep copies
-        #print(((t4-t3)*399)/(end-start))
-        # calc the move probabilities based on visit counts at the root node
-        #print("time 2 ")
 
         #start2 = time.time()
         act_visits = [(act, node._n_visits)

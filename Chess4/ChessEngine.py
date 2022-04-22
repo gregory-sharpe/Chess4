@@ -1,7 +1,10 @@
+from concurrent.futures import ProcessPoolExecutor
+
 import numpy as np
 # teams
 import ChessMain
-
+import multiprocessing
+import concurrent.futures
 # bitmap for each colour 4
 # bitmap each piece + premotedQueen 7
 # bitmap for NullSquare
@@ -127,10 +130,14 @@ class Player():
         self.canCastleQueenSide = True
         self.canCastleKingSide =True
         self.Score = 0
-        self.isHumanPlaying = False
+        self.isHumanPlaying = True
         self.isMcts = True
         self.isBestMcts = False
         self.playing = True
+    def __eq__(self, other):
+        return self.team == other.team
+    def __ne__(self, other):
+        not self.__eq__(other)
     def __str__(self):
         if self.team == RED:
             return "REDKING"
@@ -167,13 +174,42 @@ class GameState():
         self.getValidMoves()
         self.fiftyRuleRepition = 0
         self.movesMade = 0
-        self.MaxMoveLimit = 200
+        self.MaxMoveLimit = 100# TODO change this back to 200
         self.MaxFakeGameDepth = 100
         self.gameOutcome = ()
         self.finalScore = []
         self.currentState = np.zeros((len(channels), 14, 14))
         self.update_current_state()
         self.availables= self.validMoves
+    def isMovedPieceAttackingmultipleKings(self,pieceSquare):
+
+        validMoves = self.getValidMoves()
+        numberofKingsAttacked = 0
+        piece = self.board[pieceSquare[0]][pieceSquare[1]]
+        currentPlayer = self.getMovingPlayer()
+        # creates a fake move that represents the moved piece attacking an active king. if that move is within the
+        # list of valid moves than it increases the number of kings that are attacked
+        for player in self.allPlayers:
+            if player.playing and player != self.getMovingPlayer():
+                FakeMove = Move(pieceSquare,player.KingLocation,self.board)
+                if FakeMove in validMoves:
+                    numberofKingsAttacked+=1
+        if numberofKingsAttacked >=1:
+            print(numberofKingsAttacked)
+        isqueen = self.pieceTypeFromNumber(piece) == QUEEN
+        if isqueen and numberofKingsAttacked>=2:
+            if numberofKingsAttacked==2:
+                currentPlayer.Score+=1
+            else:
+                currentPlayer.Score+=5
+        elif not isqueen and numberofKingsAttacked>=2:
+            if numberofKingsAttacked == 2:
+                currentPlayer.Score+=5
+            else:
+                currentPlayer.Score+=20
+
+        validMoves = []
+        # create a
     def finishGame(self):
         self.gameOver = True
         players = self.allPlayers
@@ -448,6 +484,7 @@ class GameState():
             #print("Pawn Premoted")
             self.premotePawn(move.endRow, move.endCol)
             self.update_currentStateRC(move.endRow, move.endCol)
+        self.isMovedPieceAttackingmultipleKings(endSq)
         self.finishTurn()
     def isTeamInactive(self,team):
         return not self.getPlayerFromTeam(team).playing
@@ -478,6 +515,8 @@ class GameState():
             self.UpdateKingLocation(startSq,move.pieceMoved)
     # for now will go through the entire board and find the location of each piece.
     # check for out of bounds error
+    # wouldve been better to have pawn moves take a vector showing the position each pawn is facing and then caclulate
+    # the moves from there
     def rPawnMoves(self, r, c):
         if r - 1 < 0 or c < 0 or r > 13 or c > 13:
             return False, (0, 0)
@@ -495,6 +534,7 @@ class GameState():
             return False, (0, 0)
         return True, (r, c - 1)
     def colourDependentPawnAdvance(self, r, c, turn):
+        # wouldve been better to have pawns take a vector and their moving direction be based on that vector
         advance1 = ()
         Success1 = False
         if turn == RED:
@@ -662,7 +702,7 @@ class GameState():
                         self.validMoves.append(Move((r, c), (endR, endC) , self.board))
     def ColourDependentrookStartingPosition(self,r,c):
         team = self.turn
-        queenSideRook = False
+        queensideRook = False
         kingSideRook = False
         if team == RED:
             kingSideRook = True if (r,c) == (13,10) else False
@@ -1069,7 +1109,6 @@ class Move():
             if self.startSq == other.startSq and self.endSq == other.endSq:
                 return True
         return False
-
     def rankFileNotation(self):
         pass
 
@@ -1085,6 +1124,7 @@ class Move():
     def __hash__(self):
         return hash((self.startSq, self.endSq))
 # wouldve been better to have pawn moves and rook moves extend the move class to avoid unnescary extra overhead
+# the code looks bad with all the default values
     def __init__(self, startSq, endSq, board,wasPawnAdvance2 = False,PawnAdvance1 = (0,0),pieceTeam = RED,wasEnpassent = False,enPassentPawn = (0,0),
                  didKingMove = False,didKingSideRookMove = False,didQueenSideRookMove = False,isCastle=False,
                  finalRookPosition = (0,0),startingRookPosition = (0,0)):
@@ -1146,15 +1186,21 @@ class Move():
         encoding = possibleMoves*startingSquareEncoding+moveEncoding
         return encoding
 
+def running_proxy(mval,i):
+    for x in range(100):
+        mval.append((x,i))
+
+def start_executor():
+    with multiprocessing.Manager() as manager:
+        executor = ProcessPoolExecutor(max_workers=9)
+        mval = manager.list()
+        futures = [executor.submit(running_proxy, mval,i) for i in range(5)]
+        results = [x.result() for x in futures]
+        executor.shutdown()
+
+
 def createNPArray(current_players,score):
-    winners_z = np.zeros(len(current_players))-1
-    npScore = np.array(score)
-    winners = np.where(npScore == max(npScore))
-    print(winners[0])
-    for winner in winners[0]:
-        if winner != -1:
-            winners_z[np.array(current_players) == TEAMS[winner]] = 1.0
-    print(winners_z)
+    start_executor()
 
 def getWinners(scores):
     return np.argmax(scores)
