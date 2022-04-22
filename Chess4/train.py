@@ -302,7 +302,7 @@ class TrainPipeline():
 
     def runWithmanager(self):
         with torch.multiprocessing.Manager() as manager:
-            executor = ProcessPoolExecutor(4)
+            executor = ProcessPoolExecutor(self.CPUCount)
             mlist = manager.list()
             futures = [executor.submit(self.runSelfPlayInParralelWithManager,mlist, i) for i in range(self.game_batch_num)]
             executor.shutdown()
