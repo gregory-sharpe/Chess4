@@ -56,13 +56,13 @@ class TrainPipeline():
         self.c_puct = 3
         self.buffer_size = 10000 # change back to 10000
         self.batch_size = 512  # mini-batch size for training
+        # typically
         self.data_buffer = deque(maxlen=self.buffer_size)
 
         self.play_batch_size = 1
         self.epochs = 5  # num of train_steps for each update
-        self.savingNumber = 50
         self.kl_targ = 0.02
-        self.check_freq = 50
+        self.check_freq = 10
         self.game_batch_num = 100
         self.best_win_ratio = 0.0
         self.CPUCount = torch.multiprocessing.cpu_count()
@@ -76,11 +76,13 @@ class TrainPipeline():
                                                    self.board_height,
                                                    model_file=init_model,use_gpu=torch.cuda.is_available()
                                                    )
+
         else:
             #print("here2")
             # start training from a new policy-value net
             self.policy_value_net = PolicyValueNet(self.board_width,
                                                    self.board_height,use_gpu=torch.cuda.is_available())
+
         self.mcts_player = MCTSPlayer(self.policy_value_net.policy_value_fn,
                                       c_puct=self.c_puct,
                                       n_playout=self.n_playout,
@@ -110,12 +112,12 @@ class TrainPipeline():
                 extend_data.append((equi_state,
                                     np.flipud(equi_mcts_prob).flatten(),
                                     winner))
-                # flip horizontally
-                equi_state = np.array([np.fliplr(s) for s in equi_state])
-                equi_mcts_prob = equi_mcts_prob #np.fliplr(equi_mcts_prob)
-                extend_data.append((equi_state,
-                                    np.flipud(equi_mcts_prob).flatten(),
-                                    winner))
+                ## flip horizontally
+                #equi_state = np.array([np.fliplr(s) for s in equi_state])
+                #equi_mcts_prob = equi_mcts_prob #np.fliplr(equi_mcts_prob)
+                #extend_data.append((equi_state,
+                #                   np.flipud(equi_mcts_prob).flatten(),
+                #                    winner))
         return extend_data
 
     def collect_selfplay_data(self, n_games=1):
@@ -131,6 +133,7 @@ class TrainPipeline():
 
     def policy_update(self):
         """update the policy-value net"""
+
         mini_batch = random.sample(self.data_buffer, self.batch_size)
 
         state_batch = [data[0] for data in mini_batch]
@@ -149,19 +152,22 @@ class TrainPipeline():
                     axis=1)
             )
             if kl > self.kl_targ * 4:  # early stopping if D_KL diverges badly
+                print("in policy_update 4")
                 break
         # adaptively adjust the learning rate
         if kl > self.kl_targ * 2 and self.lr_multiplier > 0.1:
             self.lr_multiplier /= 1.5
         elif kl < self.kl_targ / 2 and self.lr_multiplier < 10:
             self.lr_multiplier *= 1.5
-
+        print("in policy_update 5")
         explained_var_old = (1 -
                              np.var(np.array(winner_batch) - old_v.flatten()) /
                              np.var(np.array(winner_batch)))
+        print("in policy_update 6")
         explained_var_new = (1 -
                              np.var(np.array(winner_batch) - new_v.flatten()) /
                              np.var(np.array(winner_batch)))
+        print("in policy_update 7")
         print(("kl:{:.5f},"
                "lr_multiplier:{:.3f},"
                "loss:{},"
@@ -175,12 +181,34 @@ class TrainPipeline():
                         explained_var_old,
                         explained_var_new))
         return loss, entropy
+    def policy_evaluateinParralel(self,n_games =25):
+        current_mcts_player = MCTSPlayer(self.policy_value_net.policy_value_fn,
+                                         c_puct=self.c_puct,
+                                         n_playout=self.n_playout)
+        if self.bestPolicy_value_net == None:
+            best_mcts_player = MCTS_Pure(c_puct=5,
+                                         n_playout=self.pure_mcts_playout_num)
+        else:
+            best_mcts_player = MCTSPlayer(self.bestPolicy_value_net.policy_value_fn,
+                                         c_puct=self.c_puct,
+                                         n_playout=self.n_playout) #self.n_playout)
 
-    def policy_evaluate(self, n_games=100):
-        """
-        Evaluate the trained policy by playing against the pure MCTS player
-        Note: this is only for monitoring the progress of training
-        """
+        with torch.multiprocessing.Manager() as manager:
+            executor = ProcessPoolExecutor(1)
+            mwin_cnt = manager.dict()
+            mwin_cnt[-1] = 0
+            mwin_cnt[1] = 0
+            mwin_cnt[2]=0
+            futures = [executor.submit(self.game.start_play,current_mcts_player,best_mcts_player,mwin_cnt) for i in range(n_games)]
+            executor.shutdown(wait=True)
+            print(mwin_cnt)
+            win_ratio = 1.0*(mwin_cnt[1] + 0.5*mwin_cnt[-1]) / n_games
+            print("num_playouts:{}, win: {}, lose: {}, tie:{}".format(
+                   self.pure_mcts_playout_num,
+                    mwin_cnt[1], mwin_cnt[2], mwin_cnt[-1]))
+            return win_ratio
+
+    def policy_evaluate(self, n_games=10):
         current_mcts_player = MCTSPlayer(self.policy_value_net.policy_value_fn,
                                          c_puct=self.c_puct,
                                          n_playout=self.n_playout)
@@ -195,16 +223,14 @@ class TrainPipeline():
 
         for i in range(n_games):
             winner = self.game.start_play(current_mcts_player,
-                                          best_mcts_player,
-                                          start_player=i % 2,
-                                          is_shown=0)
+                                          best_mcts_player)
             win_cnt[winner] += 1
         win_ratio = 1.0*(win_cnt[1] + 0.5*win_cnt[-1]) / n_games
         print("num_playouts:{}, win: {}, lose: {}, tie:{}".format(
                 self.pure_mcts_playout_num,
                 win_cnt[1], win_cnt[2], win_cnt[-1]))
         return win_ratio
-
+    # @deprecated
     def runSelfPlayInParralel(self,i,saveNoneBestModels = False):
         self.collect_selfplay_data(self.play_batch_size)
         print(i)
@@ -243,47 +269,58 @@ class TrainPipeline():
                 bestFilePath = "TrainedModels/BestModels/policyModel" + str(fileNumber) + ".model"
                 self.policy_value_net.save_model(bestFilePath)
                 self.setBestFile()#requires lock
-
-    def runSelfPlayInParralelWithManager(self,selfPlayData,i, saveNoneBestModels=False):
+    # to be deprecated in favour a model that collects training data in parralel then trains using that training data later
+    def collectDataInParralel(self,selfPlayData):
         self.collect_selfplay_data(self.play_batch_size)
-        print("here 1")
-        selfPlayData.extend(self.data_buffer)
         print(len(self.data_buffer))
-        print(len(selfPlayData))
-        print("here 2")
+        selfPlayData.extend(self.data_buffer)
+
+        #unproxiedSharedData = list(selfPlayData)
+        #if len(selfPlayData)>self.buffer_size*0.75:
+        #    print(self.buffer_size/2)
+        #    selfPlayData[:] =[]
+        #else:
+            #self.data_buffer = deque(unproxiedSharedData)
+
+    def trainingData(self):
+        if len(self.data_buffer) > self.batch_size:
+            loss, entropy = self.policy_update()
+    def evaluateData(self,fileNumber=0,i=0):
+        print("evaluating stage")
+        print("current self-play batch: {}".format(i + 1))
+        if self.bestPolicy_value_net != None:
+            win_ratio = self.policy_evaluateinParralel()
+            # self.policy_value_net.save_model('./current_policy.model')
+            if win_ratio > 0.55 or self.bestPolicy_value_net == None:
+                print("New best policy!!!!!!!!")
+                bestFilePath = "TrainedModels/BestModels/policyModel" + str(fileNumber) + ".model"
+                self.policy_value_net.save_model(bestFilePath)
+                self.setBestFile()
+        else:
+            print("saving current policy because there is no other policy to play against")
+            bestFilePath = "TrainedModels/BestModels/policyModel" + str(fileNumber) + ".model"
+            self.policy_value_net.save_model(bestFilePath)
+            self.setBestFile()
+
+    def runSelfPlayInParralelWithManager(self,selfPlayData,mBestPolicy,i, saveNoneBestModels=False):
+        self.collect_selfplay_data(self.play_batch_size)
+        selfPlayData.extend(self.data_buffer)
         unproxiedSharedData = list(selfPlayData)
+        self.bestPolicy_value_net = mBestPolicy.value
         if len(selfPlayData)>self.buffer_size*0.75:
-            print("here ")
             print(self.buffer_size/2)
             selfPlayData[:] =[]
         else:
             self.data_buffer = deque(unproxiedSharedData)
 
-        print("here 4")
-        print(len(self.data_buffer))
-        #selfPlayData.append(self.data_buffer)
-        #self.data_buffer = selfPlayData
-        print(i)
-        print(len(self.data_buffer))
-        print()
         print("batch i:{}, episode_len:{}".format(
             i + 1, self.episode_len))
         if len(self.data_buffer) > self.batch_size:
             loss, entropy = self.policy_update()
-        # check the performance of the current model,
-        # and save the model params
-        filePath = ""
-        fileNumber = 0
-        if saveNoneBestModels and not os.path.exists(
-                "TrainedModels/EveryModel/policyModel%s.model" % fileNumber):  # this is for the first time
-            filePath = "TrainedModels/EveryModel/policyModel" + str(fileNumber) + ".model"
-        while saveNoneBestModels and os.path.exists("TrainedModels/EveryModel/policyModel%s.model" % fileNumber):
-            fileNumber += 1
-            filePath = "TrainedModels/EveryModel/policyModel" + str(fileNumber) + ".model"
 
-        if i % 2 == 0 and saveNoneBestModels:
-            self.policy_value_net.save_model(filePath)
-        if (i + 1) % self.check_freq == 0:
+        fileNumber = 0
+        if(i+1) % self.check_freq == 0:
+            print("evaluating stage")
             print("current self-play batch: {}".format(i + 1))
             if self.bestPolicy_value_net != None:
                 win_ratio = self.policy_evaluate()
@@ -294,25 +331,62 @@ class TrainPipeline():
                     # update the best_policy
                     bestFilePath = "TrainedModels/BestModels/policyModel" + str(fileNumber) + ".model"
                     self.policy_value_net.save_model(bestFilePath)
-                    self.setBestFile()  # this will only happen once
+
+                    mBestPolicy.value = PolicyValueNet(self.board_width,
+                                                               self.board_height,
+                                                               model_file=bestFilePath)
+                    #self.setBestFile()
             else:
+                print("saving current policy because there is no other policy to play against" )
                 bestFilePath = "TrainedModels/BestModels/policyModel" + str(fileNumber) + ".model"
                 self.policy_value_net.save_model(bestFilePath)
-                self.setBestFile()  # requires lock
 
+                #self.setBestFile()  #may requires lock
+                mBestPolicy.value = PolicyValueNet(self.board_width,
+                                                   self.board_height,
+                                                   model_file=bestFilePath)
+    # collect data until the buffer is full
+    # keep a recording of how many games were finished
+    # train the data
+    # evaluate the data
+    def runWithManagerModularised(self):
+        policyUpdateCycles = 10
+        with torch.multiprocessing.Manager() as manager:
+
+            ## collecting data
+            executor = ProcessPoolExecutor(self.CPUCount)
+            mlist = manager.list()
+            futures = [executor.submit(self.collectDataInParralel,mlist) for i in range(self.game_batch_num)]
+            executor.shutdown(wait=True)
+            unproxiedSharedData = list(mlist)
+            self.data_buffer = deque(unproxiedSharedData)
+            print(len(mlist))
+            # train data
+
+
+        for i in range(policyUpdateCycles):
+            print(len(self.data_buffer))
+            print("updating policy")
+            self.policy_update()
+
+        print("evaluating policy")
+        self.evaluateData()
+
+    # deprecated
     def runWithmanager(self):
         with torch.multiprocessing.Manager() as manager:
             executor = ProcessPoolExecutor(self.CPUCount)
             mlist = manager.list()
-            futures = [executor.submit(self.runSelfPlayInParralelWithManager,mlist, i) for i in range(self.game_batch_num)]
-            executor.shutdown()
-
+            mBestPolicy = manager.Value('A',self.bestPolicy_value_net)
+            futures = [executor.submit(self.runSelfPlayInParralelWithManager,mlist,mBestPolicy, i) for i in range(self.game_batch_num)]
+            executor.shutdown(wait=True)
+    # deprecated
     def run(self):
         """run the training pipeline"""
         try:
 
             saveNoneBestModels = False
-            executor = concurrent.futures.ProcessPoolExecutor(self.CPUCount)
+            executor = concurrent.futures.ProcessPoolExecutor(6)
             futures = [executor.submit(self.runSelfPlayInParralel, i) for i in range(self.game_batch_num)]
             concurrent.futures.wait(futures)
 
@@ -331,4 +405,4 @@ if __name__ == '__main__':
         os.mkdir("TrainedModels/EveryModel")
     training_pipeline = TrainPipeline()
     #training_pipeline.run()
-    training_pipeline.runWithmanager()
+    training_pipeline.runWithManagerModularised()

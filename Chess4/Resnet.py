@@ -1,7 +1,12 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 # TODO: make changes to the RESNET to allow for FORWARD to return action and value so that it can interface with PolicyValueNet
+#
+import PolicyValueNet
+
+
 class block(nn.Module):
     def __init__(
         self, in_channels, intermediate_channels, identity_downsample=None, stride=1
@@ -59,11 +64,23 @@ class ResNet(nn.Module):
         super(ResNet, self).__init__()
         self.in_channels = 64
         self.conv1 = nn.Conv2d(image_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        self.conv2 = nn.Conv2d(image_channels, 32, kernel_size=1)
         self.bn1 = nn.BatchNorm2d(64)
         self.relu = nn.ReLU()
+        self.act_conv1 = nn.Conv2d(128,image_channels, kernel_size=1)
+        self.board_width = 14
+        self.board_height = 14
+        self.resnetToHeadLayer = nn.Linear(2048,128*14*14)
+        self.act_fc1 = nn.Linear(image_channels * self.board_width * self.board_height,
+                                 num_classes)
+        self.image_chanels = image_channels
+        self.val_conv1 = nn.Conv2d(128, 2, kernel_size=1)
+        self.val_fc1 = nn.Linear(2 * self.board_width * self.board_height, 64)
+        self.val_fc2 = nn.Linear(64, 1)
+
+
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
 
-        # Essentially the entire ResNet architecture are in these 4 lines below
         self.layer1 = self._make_layer(
             block, layers[0], intermediate_channels=64, stride=1
         )
@@ -89,20 +106,29 @@ class ResNet(nn.Module):
         x = self.layer2(x)
         x = self.layer3(x)
         x = self.layer4(x)
-
         x = self.avgpool(x)
         x = x.reshape(x.shape[0], -1)
-        x = self.fc(x)
+        #x = self.fc(x)
+        x = self.resnetToHeadLayer(x)
+        x = x.view(-1,128,14,14)
 
-        return x
+        x_act = F.relu(self.act_conv1(x))
+        x_act = x_act.view(-1, self.image_chanels* self.board_width * self.board_height)
+        x_act = F.log_softmax(self.act_fc1(x_act),dim=1)
+
+        # state value layers
+        x_val = F.relu(self.val_conv1(x))
+        x_val = x_val.view(-1, 2 * self.board_width * self.board_height)
+        x_val = F.relu(self.val_fc1(x_val))
+        x_val = torch.tanh(self.val_fc2(x_val))
+
+        return x_act, x_val
+
 
     def _make_layer(self, block, num_residual_blocks, intermediate_channels, stride):
         identity_downsample = None
         layers = []
 
-        # Either if we half the input space for ex, 56x56 -> 28x28 (stride=2), or channels changes
-        # we need to adapt the Identity (skip connection) so it will be able to be added
-        # to the layer that's ahead
         if stride != 1 or self.in_channels != intermediate_channels * 4:
             identity_downsample = nn.Sequential(
                 nn.Conv2d(
@@ -119,41 +145,39 @@ class ResNet(nn.Module):
             block(self.in_channels, intermediate_channels, identity_downsample, stride)
         )
 
-        # The expansion size is always 4 for ResNet 50,101,152
         self.in_channels = intermediate_channels * 4
 
-        # For example for first resnet layer: 256 will be mapped to 64 as intermediate layer,
-        # then finally back to 256. Hence no identity downsample is needed, since stride = 1,
-        # and also same amount of channels.
         for i in range(num_residual_blocks - 1):
             layers.append(block(self.in_channels, intermediate_channels))
 
         return nn.Sequential(*layers)
 
 
-def ResNet50(img_channel=3, num_classes=1000):
+def ResNet50(img_channel=3, num_classes=14*14*(8*13+8)):
     return ResNet(block, [3, 4, 6, 3], img_channel, num_classes)
 
 
-def ResNet101(img_channel=3, num_classes=1000):
+def ResNet101(img_channel=3, num_classes=14*14*(8*13+8)):
     return ResNet(block, [3, 4, 23, 3], img_channel, num_classes)
 
 
-def ResNet152(img_channel=3, num_classes=1000):
+def ResNet152(img_channel=3, num_classes=14*14*(8*13+8)):
     return ResNet(block, [3, 8, 36, 3], img_channel, num_classes)
 
 
 def test():
-    # Resnet101 is the NN similar to net
-    net = ResNet101(img_channel=3, num_classes=1000)
-    x = torch.randn(10,3,14,14)
-    y = net(x)
-    print(net)
-    print()
-    print(x)
-    print()
-    print(y)
+
+    net = ResNet101(img_channel=28, num_classes=6)
+    x = torch.randn(1,28,14,14)
+    y = PolicyValueNet.Net(14,14)
+    w = y(x)#101 128 14 14
+    net.eval()
+    z = net(x)
+
+    #print(z[1].size())
 
 
+if __name__ == "__main__" :
+    test()
 
-test()
+

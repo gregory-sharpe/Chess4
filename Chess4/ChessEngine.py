@@ -1,44 +1,34 @@
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor# just for testing
 
 import numpy as np
 # teams
 import ChessMain
-import multiprocessing
+import multiprocessing # just for testing
 import concurrent.futures
-# bitmap for each colour 4
-# bitmap each piece + premotedQueen 7
-# bitmap for NullSquare
 #TODO code is likely ineffiecient due to how code in this file was created.
 # need to make it more effiecient
 # the code is also quite messy and while functional and no revisions are needed it is annoying to navigate
 #12 all together
 import ValueNetworkfunctions
-#4 channels for team,6 channels for piece , 2 channels for empty square and null square
 RED = 10
-#RED=0000 0000 0001
 BLUE = 20
-#BLUE=0000 0000 0010
 YELLOW = 30
-#YELLOW=0000 0000 0100
 GREEN = 40
-#GREEN=0000 0000 1000
 INACTIVEPIECE = 50
 # pieces - an inactive piece will have the value - PIECE ie -1 for an inactive pawn
 PAWN = 1
-#PAWN=0000 0001 0000
 ROOK = 2
-#ROOK=0000 0010 0000
 KNIGHT = 3
-
 BISHOP = 4
 QUEEN = 5
 KING = 6
-# by making the values as small as possible it reduces memory useage
 # other square classifications
 NULLSQUARE = 7  # the black squares no piece can move to
 EMPTYSQUARE = 0
 POSSIBLEMOVES = 14*14*(8*13+8) # starting square *(queen directions * magnitude + knightDirections)
-
+# this is still an upperbound. a queen cant go a magnitude of 13 in 2 directions
+# this is still an upperbound. the actual value can be obtained putting a queen and knight in every position on the board and then
+# ennumerating their moves and placing their position in a hashmap
 REDTURN = 100 # if this constant value is changed create a function that takes the team and outputs the turn channel
 REDKINGCASTLE = 101
 REDQUEENCASTLE = 102
@@ -64,10 +54,73 @@ GREENSCORE = 403
 GREENACTIVE = 404
 
 FIFTYMOVEREPEAT = 50
+# turncentric constants
+CURRENTPLAYER = 1000
+CURRENTPLAYERKINGCASTLE = 1001
+CURRENTPLAYERQUEENCASTLE = 1002
+CURRENTPLAYERSCORE = 1003
+CURRENTPLAYERACTIVE = 1004
 
+PLAYERIN1MOVE = 2000
+PLAYERIN1MOVEKINGCASTLE = 2001
+PLAYERIN1MOVEQUEENCASTLE = 2002
+PLAYERIN1MOVESCORE = 2003
+PLAYERIN1MOVEACTIVE = 2004
+
+PLAYERIN2MOVES = 3000
+PLAYERIN2MOVESKINGCASTLE = 3001
+PLAYERIN2MOVESQUEENCASTLE = 3002
+PLAYERIN2MOVESSCORE = 3003
+PLAYERIN2MOVESACTIVE = 3004
+
+PLAYERIN3MOVES = 4000
+PLAYERIN3MOVESKINGCASTLE = 4001
+PLAYERIN3MOVESQUEENCASTLE = 4002
+PLAYERIN3MOVESSCORE = 4003
+PLAYERIN3MOVESACTIVE = 4004
+
+# using turn based to allow for rotations
+# this couldve easily been done in a list using indexes. the map makes code clearer
+turnCentricchannels = {
+    CURRENTPLAYER: 0,
+    PLAYERIN1MOVE: 1,
+    PLAYERIN2MOVES: 2,
+    PLAYERIN3MOVES: 3,
+    PAWN: 4,
+    KNIGHT: 5,
+    ROOK: 6,
+    BISHOP: 7,
+    QUEEN: 8,
+    KING: 9,
+    NULLSQUARE: 10,
+
+    CURRENTPLAYERACTIVE: 11,
+    CURRENTPLAYERSCORE: 12,
+    CURRENTPLAYERKINGCASTLE: 13,
+    CURRENTPLAYERQUEENCASTLE: 14,
+
+    PLAYERIN1MOVEACTIVE: 15,
+    PLAYERIN1MOVESCORE: 16,
+    PLAYERIN1MOVEKINGCASTLE: 17,
+    PLAYERIN1MOVEQUEENCASTLE: 18,
+
+    PLAYERIN2MOVESACTIVE: 19,
+    PLAYERIN2MOVESSCORE: 20,
+    PLAYERIN2MOVESKINGCASTLE: 21,
+    PLAYERIN2MOVESQUEENCASTLE: 22,
+
+    PLAYERIN3MOVESACTIVE: 23,
+    PLAYERIN3MOVESSCORE: 24,
+    PLAYERIN3MOVESKINGCASTLE: 25,
+    PLAYERIN3MOVESQUEENCASTLE: 26,
+
+    FIFTYMOVEREPEAT: 27
+}
+# other modules use the length of channels to perform
+# @deprecated
 channels = {
     # TODO instead of using the teams as channels directly could use the current playeer , player in 1 move , player in 2 moves etc
-    RED: 0,
+    RED: 0,# turnindex4
     BLUE: 1,
     YELLOW: 2,
     GREEN: 3,
@@ -106,10 +159,10 @@ channels = {
     GREENQUEENCASTLE: 30,
 
     FIFTYMOVEREPEAT:31
-    # need a channel for premoted pawns
 }
 
 TEAMS = [RED, BLUE, YELLOW, GREEN]
+TURNBASEDTEAMS= [CURRENTPLAYER,PLAYERIN1MOVE,PLAYERIN2MOVES,PLAYERIN3MOVES]
 TEAMSs = ["r", "b", "y", "g"]
 PIECES = [PAWN, ROOK, BISHOP, QUEEN, KING, KNIGHT]
 PIECESs = ["p", "R", "B", "Q", "K", "N"]
@@ -140,13 +193,13 @@ class Player():
         not self.__eq__(other)
     def __str__(self):
         if self.team == RED:
-            return "REDKING"
+            return "REDKING " + str(self.KingLocation)
         elif self.team == BLUE:
-            return "BLUEKING"
+            return "BLUEKING " + str(self.KingLocation)
         elif self.team == GREEN:
-            return "GREENKING"
+            return "GREENKING "+ str(self.KingLocation)
         elif self.team == YELLOW:
-            return "YELLOWKING"
+            return "YELLOWKING "+ str(self.KingLocation)
     inCheck = False
     Pins = []
     checks = []
@@ -174,11 +227,12 @@ class GameState():
         self.getValidMoves()
         self.fiftyRuleRepition = 0
         self.movesMade = 0
-        self.MaxMoveLimit = 100# TODO change this back to 200
+        self.MaxMoveLimit =60# TODO change this back to 200
         self.MaxFakeGameDepth = 100
         self.gameOutcome = ()
         self.finalScore = []
         self.currentState = np.zeros((len(channels), 14, 14))
+        self.turnCentricState = np.zeros((len(turnCentricchannels), 14, 14))
         self.update_current_state()
         self.availables= self.validMoves
     def isMovedPieceAttackingmultipleKings(self,pieceSquare):
@@ -215,8 +269,25 @@ class GameState():
         players = self.allPlayers
         self.gameOutcome = ValueNetworkfunctions.getValue(players)
         self.finalScore = ValueNetworkfunctions.getValue(players,valueFunction="Raw")
+    def relativeScore(self):
+        return ValueNetworkfunctions.getValue(self.allPlayers,valueFunction="PercentageRange2")
     def getGameOutcome(self):
         return ValueNetworkfunctions.getValue(self.allPlayers)
+    def update_current_stateTurnCentric(self):
+        self.turnCentricState = np.zeros((len(turnCentricchannels), 14, 14))
+        self.turnCentricState[turnCentricchannels[FIFTYMOVEREPEAT]] = self.fiftyRuleRepition  # TURN
+        for team in TEAMS:
+            player = self.getPlayerFromTeam(team)
+            teamConstant = self.getturnsTilPlaying(team)
+            self.turnCentricState[turnCentricchannels[teamConstant+1]] = player.canCastleKingSide
+            self.turnCentricState[turnCentricchannels[teamConstant+2]] = player.canCastleQueenSide
+            self.turnCentricState[turnCentricchannels[teamConstant+3]] = player.Score
+            self.turnCentricState[turnCentricchannels[teamConstant+4]] = player.playing
+        for r in range(14):
+            for c in range(14):
+                self.update_currentStateTurnCentricRC(r, c)
+        #self.turnCentricState = np.array([np.rot90(s, (self.turnIndex%4)) for s in self.turnCentricState])
+        return self.board
     def update_current_state(self):
         self.currentState[channels[FIFTYMOVEREPEAT]] = self.fiftyRuleRepition  # TURN
         for team in TEAMS:
@@ -234,6 +305,7 @@ class GameState():
             for c in range(14):
                 self.update_currentStateRC(r,c)
         return self.board
+
     def update_currentStateRC(self,r,c):
         piece = self.board[r][c]
         #for now all the values will be set to 0 before changing individually. when there are constant values like can caslte only the first k must be changed
@@ -247,6 +319,23 @@ class GameState():
                 type = self.pieceTypeFromNumber(piece)
                 self.currentState[channels[team]][r][c] = 1
                 self.currentState[channels[type]][r][c] = 1
+    def update_currentStateTurnCentricRC(self,r,c):
+        piece = self.board[r][c]
+
+        if piece != EMPTYSQUARE:
+            if piece == NULLSQUARE:
+                self.turnCentricState[turnCentricchannels[NULLSQUARE]][r][c] = 1
+            else:
+                team = self.getturnsTilPlaying(self.pieceTeamFromNumber(piece))
+                type = self.pieceTypeFromNumber(piece)
+                self.turnCentricState[turnCentricchannels[team]][r][c] = 1
+                self.turnCentricState[turnCentricchannels[type]][r][c] = 1
+
+    def getturnsTilPlaying(self, team):
+        turnindex = self.turnIndex % 4
+        indexofTeam = TEAMS.index(team)
+        return TURNBASEDTEAMS[(indexofTeam - turnindex) % 4]
+
     def getMovingPlayer(self):
         if self.turn == RED:
             return self.RedPlayer
@@ -481,10 +570,10 @@ class GameState():
             self.update_currentStateRC(move.finalRookPosition[0], move.finalRookPosition[1])
             self.update_currentStateRC(move.startingRookPosition[0], move.startingRookPosition[1])
         if (move.pawnPremoted):
-            #print("Pawn Premoted")
             self.premotePawn(move.endRow, move.endCol)
             self.update_currentStateRC(move.endRow, move.endCol)
         self.isMovedPieceAttackingmultipleKings(endSq)
+        self.update_current_stateTurnCentric()
         self.finishTurn()
     def isTeamInactive(self,team):
         return not self.getPlayerFromTeam(team).playing
@@ -751,12 +840,15 @@ class GameState():
             kingsideDirection = greenKingSidemovement
         # checking if the rook still exist
         if currentPlayer.canCastleKingSide:
+            #print("here 1")
             kingRookR = kingLocation[0] + 3 * kingsideDirection[0]
             kingRookC = kingLocation[1] + 3 * kingsideDirection[1]
             kingRook = self.board[kingRookR][kingRookC]
             if  self.pieceTypeFromNumber(kingRook)!= ROOK or self.pieceTeamFromNumber(kingRook)!= team:
                 currentPlayer.canCastleKingSide = False
                 cancastleKingsideInState = False
+            #print(currentPlayer.canCastleKingSide)
+            #print(cancastleKingsideInState)
         if currentPlayer.canCastleQueenSide:
             queenRookR = kingLocation[0] - 4 * kingsideDirection[0]
             queenRookC = kingLocation[1] - 4 * kingsideDirection[1]
@@ -767,33 +859,40 @@ class GameState():
 
         if currentPlayer.canCastleKingSide:
             cancastleKingsideInState = True
-            for i in range(0,3):
+            for i in range(1,3):
                 endr = kingLocation[0]+ i* kingsideDirection[0]
                 endc = kingLocation[1]+ i * kingsideDirection[1]
                 endSquare = self.board[endr][endc]
                 if endSquare != EMPTYSQUARE or self.squareInCheck(endr,endc):
-                    cancastleKingsideInState = False
+                    #print(i)
+                    #print("King")
 
+                    cancastleKingsideInState = False
+        #print(cancastleKingsideInState)
 
         if currentPlayer.canCastleQueenSide:
             canCastleQueenSideInState = True
-            for i in range(0,4):
+            for i in range(1,4):
                 endr = kingLocation[0] - i* kingsideDirection[0]
                 endc = kingLocation[1] - i * kingsideDirection[1]
                 endSquare = self.board[endr][endc]
                 if endSquare != EMPTYSQUARE or (self.squareInCheck(endr,endc) and i != 3):
+                    #print(i)
+                    #print("queen")
                     canCastleQueenSideInState = False
         if cancastleKingsideInState:
             finalKingLocation = (kingLocation[0]+2*kingsideDirection[0],kingLocation[1] + 2*kingsideDirection[1])
             startingRookPosition = (kingRookR,kingRookC)
             finalRookPosition = (kingRookR-2*kingsideDirection[0],kingRookC-2*kingsideDirection[1])
             _move = Move((kingLocation[0], kingLocation[1]), finalKingLocation, self.board,isCastle=True,didKingMove=True,startingRookPosition = startingRookPosition,finalRookPosition = finalRookPosition)
+            #print("here 3")
             self.validMoves.append(_move)
         if canCastleQueenSideInState:
             finalKingLocation = (kingLocation[0] - 2 * kingsideDirection[0], kingLocation[1] - 2 * kingsideDirection[1])
             startingRookPosition = (queenRookR,queenRookC)
             finalRookPosition = (queenRookR+3*kingsideDirection[0],queenRookC+3*kingsideDirection[1])
             _move = Move((kingLocation[0], kingLocation[1]), finalKingLocation, self.board, isCastle=True,didKingMove=True,startingRookPosition=startingRookPosition,finalRookPosition= finalRookPosition)
+            #print("here 3")
             self.validMoves.append(_move)
     def kingMoves(self, r, c):
         kingDirections = ((1,0),(-1,0),(0,1),(0,-1),(1,1),(1,-1),(-1,1),(-1,-1))
@@ -1056,6 +1155,7 @@ class GameState():
                     break
 
         if (not self.getMovingPlayer().inCheck):
+            #print("here")
             self.getCastleMoves()
         self.validMoves.sort(key=self.movePriority)
         self.validMoves = list(dict.fromkeys(self.validMoves))
@@ -1097,7 +1197,7 @@ class GameState():
             return 1
         return 0
     def current_state(self):
-        return self.currentState
+        return self.turnCentricState
     """def current_state(self):
         # May need to return board state from the perspective of the current player
         return self.board
@@ -1185,27 +1285,36 @@ class Move():
         # each starting direction has 29 moves. starting square *29 + move
         encoding = possibleMoves*startingSquareEncoding+moveEncoding
         return encoding
-
+# this is just for testing code on a small scale
 def running_proxy(mval,i):
-    for x in range(100):
-        mval.append((x,i))
-
+    for x in range(3):
+        mval[i] = 2+mval[i]
+    print(mval)
 def start_executor():
     with multiprocessing.Manager() as manager:
         executor = ProcessPoolExecutor(max_workers=9)
-        mval = manager.list()
-        futures = [executor.submit(running_proxy, mval,i) for i in range(5)]
-        results = [x.result() for x in futures]
+        mwin_cnt = manager.dict()
+        a = Player(RED,(1,1))
+        mObject = manager.Value('A',None)
+        mwin_cnt[5] = 2
+        mwin_cnt[1] = 2
+        mwin_cnt[2] = 2
+        mwin_cnt[3] = 2
+        mwin_cnt[4] = 2
+        futures = [executor.submit(running_proxy, mwin_cnt,i) for i in range(5)]
         executor.shutdown()
 
-
+def getturnsTilPlaying(index,team):
+    turnindex = index % 4
+    indexofTeam = TEAMS.index(team)
+    return TURNBASEDTEAMS[(indexofTeam -turnindex) %4]
 def createNPArray(current_players,score):
     start_executor()
 
-def getWinners(scores):
-    return np.argmax(scores)
+def getWinners():
+    x = np.array([0,4,7,69])
+    import ValueNetworkfunctions
+    print(ValueNetworkfunctions.valueFunctionCentered(x))
 if __name__ == "__main__" :
-
-    current_players = [10,20,30,40,10,20,30,40,10,20,30,40,10,20,30,10,20,30]
-    createNPArray(current_players,[1,2,3,4])
+    getWinners()
 

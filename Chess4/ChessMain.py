@@ -98,12 +98,15 @@ class Game():
         self.isDisplayed = isDisplayed
         self.gs = ChessEngine.GameState()
 
-    def startGame(self,mcts = None):
+    def startGame(self,mcts = None,DontCreateGS= False):
         print("pygame initisialised")
         screen = p.display.set_mode((WIDTH, HEIGHT))
         screen.fill(p.Color("white"))
         clock = p.time.Clock()
-        gs = ChessEngine.GameState()
+        if not DontCreateGS:
+            gs = ChessEngine.GameState()
+        else:
+            gs = self.gs
         gscopyTest = ()  # type: GameState
         loadImages()
         moveMade = False
@@ -122,7 +125,8 @@ class Game():
                     if len(gs.validMoves) == 0:
                         gs.removePlayer(gs.getMovingPlayer()) #screen This potentially should be removed
                     else:
-                        AIMove = AI.findRandomMove(gs.validMoves)
+                        AIMove = AI.findRandomMove(gs.validMoves) # TODO change back to random move
+                        #AIMove = AI.greedyFindBestMove(gs.validMoves,gs)
                         gs.makeMove(AIMove)
                     moveMade = True
                 elif not gs.gameOver and not player.isHumanPlaying and player.isMcts:
@@ -188,13 +192,13 @@ class Game():
             move, move_probs = player.get_action(self.gs,
                                                  temp=temp,
                                                  return_prob=1)
+            #print("Move made")
             #print(move)
             mcts_probs.append(move_probs)
             current_players.append(self.gs.turn)
-            # append the current state here
-            # perform a move
             self.gs.do_move(move)
-            states.append(self.gs.currentState)
+            z = self.gs.turnCentricState
+            states.append(z)
             #self.gs.finishGame() # remove after testing
             #self.gs.getLegalMoves()
             #end, winner = self.board.game_end()
@@ -206,13 +210,14 @@ class Game():
                 winners_z = np.zeros(len(current_players)) - 1
                 npScore = np.array(self.gs.finalScore)
                 winners = np.where(npScore == max(npScore))
+                relativeScore = self.gs.relativeScore()
                 for winner in winners[0]:
                     if winner != -1:
                         winners_z[np.array(current_players) == ChessEngine.TEAMS[winner]] = 1.0
 
                 player.reset_player()
                 return self.gs.gameOver, zip(states, mcts_probs, winners_z)
-    def start_play(self, current_mcts_player, best_mcts_player, start_player=0, is_shown=1,temp=1e-3):
+    def start_play(self, current_mcts_player, best_mcts_player,parralelWinDictionary = None,temp=1e-3):
 
 
         """start a game between two players"""
@@ -233,6 +238,7 @@ class Game():
                                              temp=temp,
                                             return_prob=0)
             self.gs.do_move(move)
+
             if self.gs.gameOver:
                 bestMctsScore = 0
                 currentMctsScore =0
@@ -244,11 +250,14 @@ class Game():
                         currentMctsScore+= self.gs.allPlayers[i].Score
                 if currentMctsScore>bestMctsScore:
                     winner = 1
-                elif currentMctsScore>bestMctsScore:
+                elif currentMctsScore<bestMctsScore:
                     winner =2
                 else:
                     winner = -1
-                return winner
+                if parralelWinDictionary !=None:
+                    parralelWinDictionary[winner] = parralelWinDictionary[winner]+1
+                    print(parralelWinDictionary)
+        return winner
 def main():
     print("pygame initisialised")
     screen = p.display.set_mode( (WIDTH,HEIGHT))

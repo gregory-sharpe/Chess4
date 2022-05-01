@@ -1,5 +1,5 @@
 """
-An implementation of the policyValueNet in PyTorch
+version that doesnt use resnet and can run on any computer
 """
 
 import torch
@@ -10,12 +10,14 @@ from torch.autograd import Variable
 import numpy as np
 
 import ChessEngine
+import Resnet
 
 
 def set_learning_rate(optimizer, lr):
     """Sets the learning rate to the given value"""
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
+#TODO use hogwild , change augment data
 
 
 class Net(nn.Module):
@@ -27,12 +29,12 @@ class Net(nn.Module):
         self.board_width = board_width
         self.board_height = board_height
         # common layers
-        self.conv1 = nn.Conv2d(len(ChessEngine.channels), 32, kernel_size=3, padding=1)
+        self.conv1 = nn.Conv2d(len(ChessEngine.turnCentricchannels), 32, kernel_size=3, padding=1)
         self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
         self.conv3 = nn.Conv2d(64, 128, kernel_size=3, padding=1)
         # action policy layers
-        self.act_conv1 = nn.Conv2d(128,len(ChessEngine.channels), kernel_size=1)
-        self.act_fc1 = nn.Linear(len(ChessEngine.channels) * board_width * board_height,
+        self.act_conv1 = nn.Conv2d(128,len(ChessEngine.turnCentricchannels), kernel_size=1)
+        self.act_fc1 = nn.Linear(len(ChessEngine.turnCentricchannels) * board_width * board_height,
                                  ChessEngine.POSSIBLEMOVES)
         # state value layers
         self.val_conv1 = nn.Conv2d(128, 2, kernel_size=1)
@@ -44,19 +46,20 @@ class Net(nn.Module):
         x = F.relu(self.conv1(state_input))
         x = F.relu(self.conv2(x))
         x = F.relu(self.conv3(x))
+        #print(x.size())
+
         # action policy layers
         x_act = F.relu(self.act_conv1(x))
-        #x_act = x_act.view(-1,  * self.board_width * self.board_height)
-        x_act = x_act.view(-1, len(ChessEngine.channels) * self.board_width * self.board_height)
-        x_act = F.log_softmax(self.act_fc1(x_act))
-        #x_act = F.log_softmax(self.act_fc1(x_act),1)
+        #print(x_act.size())
+        #print(self.board_width*self.board_width*len(ChessEngine.turnCentricchannels))
+        x_act = x_act.view(-1, len(ChessEngine.turnCentricchannels) * self.board_width * self.board_height)
+        #print(x_act.size())
+        x_act = F.log_softmax(self.act_fc1(x_act),dim=1)
 
         # state value layers
         x_val = F.relu(self.val_conv1(x))
         x_val = x_val.view(-1, 2 * self.board_width * self.board_height)
         x_val = F.relu(self.val_fc1(x_val))
-        #x_val = F.tanh(self.val_fc2(x_val))
-        #DEPRECATED I CHANGED
         x_val = torch.tanh(self.val_fc2(x_val))
         return x_act, x_val
 
@@ -72,9 +75,12 @@ class PolicyValueNet():
         self.l2_const = 1e-4  # coef of l2 penalty
         if self.use_gpu:
             self.policy_value_net = Net(board_width, board_height).cuda()
+            self.policy_value_net.share_memory()
             #self.policy_value_net = net.cuda()
         else:
-            self.policy_value_net = Net(board_width, board_height)
+            #self.policy_value_net = Net(board_width, board_height)
+            self.policy_value_net = Resnet.ResNet50(len(ChessEngine.turnCentricchannels),14*14*(8*13+8))
+            self.policy_value_net.share_memory()
             #self.policy_value_net = net
         self.optimizer = optim.Adam(self.policy_value_net.parameters(),
                                     weight_decay=self.l2_const)
@@ -90,13 +96,13 @@ class PolicyValueNet():
         """
         if self.use_gpu:
             #state_batch = Variable(torch.FloatTensor(state_batch).cuda())
-            state_batch = Variable(torch.FloatTensor(np.ndarray(state_batch)).cuda())
+            state_batch = Variable(torch.FloatTensor(np.array(state_batch)).cuda())
             log_act_probs, value = self.policy_value_net(state_batch)
             act_probs = np.exp(log_act_probs.data.cpu().numpy())
             return act_probs, value.data.cpu().numpy()
         else:
             #state_batch = Variable(torch.FloatTensor(state_batch)) # UserWarning: Creating a tensor from a list of numpy.ndarrays is extremely slow. Please consider converting the list to a single numpy.ndarray with numpy.array() before converting to a tensor. (Triggered internally at  ..\torch\csrc\utils\tensor_new.cpp:201.)
-            state_batch = Variable(torch.FloatTensor(np.ndarray(state_batch)))
+            state_batch = Variable(torch.FloatTensor(np.array(state_batch)))
             log_act_probs, value = self.policy_value_net(state_batch)
             act_probs = np.exp(log_act_probs.data.numpy())
             return act_probs, value.data.numpy()
@@ -110,11 +116,9 @@ class PolicyValueNet():
         #legal_positions = board.availables# list of moves
         legal_positions = board.validMoves
         current_state = np.ascontiguousarray(board.current_state().reshape(
-            -1, len(ChessEngine.channels), self.board_width, self.board_height))
-        #current_state = np.ascontiguousarray(board.current_state().reshape(
-        #    -1, 4, self.board_width, self.board_height))
-        # changed 4 to 1
+            -1, len(ChessEngine.turnCentricchannels), self.board_width, self.board_height))
         if self.use_gpu:
+            self.policy_value_net.eval()
             log_act_probs, value = self.policy_value_net(
                 Variable(torch.from_numpy(current_state)).cuda().float())
             act_probs = np.exp(log_act_probs.data.cpu().numpy().flatten())
@@ -135,14 +139,15 @@ class PolicyValueNet():
     def train_step(self, state_batch, mcts_probs, winner_batch, lr):
         """perform a training step"""
         # wrap in Variable
+        self.policy_value_net.train()
         if self.use_gpu:
-            state_batch = Variable(torch.FloatTensor(state_batch).cuda())
-            mcts_probs = Variable(torch.FloatTensor(mcts_probs).cuda())
-            winner_batch = Variable(torch.FloatTensor(winner_batch).cuda())
+            state_batch = Variable(torch.FloatTensor(np.array(state_batch)).cuda())
+            mcts_probs = Variable(torch.FloatTensor(np.array(mcts_probs)).cuda())
+            winner_batch = Variable(torch.FloatTensor(np.array(winner_batch)).cuda())
         else:
-            state_batch = Variable(torch.FloatTensor(state_batch))
-            mcts_probs = Variable(torch.FloatTensor(mcts_probs))
-            winner_batch = Variable(torch.FloatTensor(winner_batch))
+            state_batch = Variable(torch.FloatTensor(np.array(state_batch)))
+            mcts_probs = Variable(torch.FloatTensor(np.array(mcts_probs)))
+            winner_batch = Variable(torch.FloatTensor(np.array(winner_batch)))
 
         # zero the parameter gradients
         self.optimizer.zero_grad()

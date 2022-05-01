@@ -162,9 +162,8 @@ class MCTS(object):
         act_visits = [(act, node._n_visits)
                       for act, node in self._root._children.items()]
         end2 = time.time()
-        #print(end2-start2)
-        #print(self._root._children)
-        #print(act_visits)
+
+
         acts, visits = zip(*act_visits)
 
         act_probs = softmax(1.0/temp * np.log(np.array(visits) + 1e-10))
@@ -211,7 +210,6 @@ class MCTSPlayer(object):
         #print(len(sensible_moves))
         if len(sensible_moves) > 0:
             acts, probs = self.mcts.get_move_probs(board, temp)
-            test = list(acts)
             acts_ = (map(lambda x:x.encode(),acts))
             move_probs[list(acts_)] = probs
             # error comes here. already have the moves with the list of probabillities

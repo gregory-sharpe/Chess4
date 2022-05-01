@@ -23,8 +23,14 @@ def getBestFile():
 if __name__ == "__main__" :
     bestPolicy = getBestFile()
     g = Game()
+    players = g.gs.allPlayers
+    for i in range(1,4):
+        players[i].isHumanPlaying=False
+        players[i].isMcts = False
+        #players[i].isBestMcts=True
+        print(players[i].isHumanPlaying)
     if bestPolicy == None:
-        g.startGame()
+        g.startGame(DontCreateGS=True)
     else:
         c_punct = 5
         n_playout = 100
@@ -34,5 +40,5 @@ if __name__ == "__main__" :
                                          n_playout=n_playout)
         #bestMCTSPlayer = MCTS_Pure(c_puct=5,
         #                             n_playout=100)
-    g.startGame(bestMCTSPlayer)
+    g.startGame(bestMCTSPlayer,DontCreateGS=True)
     #main()
