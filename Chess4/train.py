@@ -351,26 +351,26 @@ class TrainPipeline():
     # evaluate the data
     def runWithManagerModularised(self):
         policyUpdateCycles = 10
+        for x in range(10):
+            with torch.multiprocessing.Manager() as manager:
 
-        with torch.multiprocessing.Manager() as manager:
-
-            ## collecting data
-            executor = ProcessPoolExecutor(self.CPUCount)
-            mlist = manager.list()
-            futures = [executor.submit(self.collectDataInParralel,mlist) for i in range(self.game_batch_num)]
-            executor.shutdown(wait=True)
-            unproxiedSharedData = list(mlist)
-            self.data_buffer = deque(unproxiedSharedData)
-            print(len(mlist))
-            # train data
+                ## collecting data
+                executor = ProcessPoolExecutor(self.CPUCount)
+                mlist = manager.list()
+                futures = [executor.submit(self.collectDataInParralel,mlist) for i in range(self.game_batch_num)]
+                executor.shutdown(wait=True)
+                unproxiedSharedData = list(mlist)
+                self.data_buffer = deque(unproxiedSharedData)
+                print(len(mlist))
+                # train data
 
 
-        for i in range(policyUpdateCycles):
-            print(len(self.data_buffer))
-            print("updating policy")
-            self.policy_update()
-        bestFilePath = "TrainedModels/BestModels/policyModel" + str(0) + ".model"
-        self.policy_value_net.save_model(bestFilePath)
+            for i in range(policyUpdateCycles):
+                print(len(self.data_buffer))
+                print("updating policy")
+                self.policy_update()
+            bestFilePath = "TrainedModels/BestModels/policyModel" + str(0) + ".model"
+            self.policy_value_net.save_model(bestFilePath)
         #print("evaluating policy")
         #self.evaluateData() deterministic so no point
 

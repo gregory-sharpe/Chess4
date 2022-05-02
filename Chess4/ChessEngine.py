@@ -227,7 +227,7 @@ class GameState():
         self.getValidMoves()
         self.fiftyRuleRepition = 0
         self.movesMade = 0
-        self.MaxMoveLimit =60# TODO change this back to 200
+        self.MaxMoveLimit =100# TODO change this back to 200
         self.MaxFakeGameDepth = 100
         self.gameOutcome = ()
         self.finalScore = []
