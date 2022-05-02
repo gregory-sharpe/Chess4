@@ -74,7 +74,7 @@ class PolicyValueNet():
         self.board_height = board_height
         self.l2_const = 1e-4  # coef of l2 penalty
         if self.use_gpu:
-            self.policy_value_net = Net(board_width, board_height).cuda()
+            self.policy_value_net = Resnet.ResNet50(len(ChessEngine.turnCentricchannels), 14 * 14 * (8 * 13 + 8)).cuda()
             self.policy_value_net.share_memory()
             #self.policy_value_net = net.cuda()
         else:
@@ -86,6 +86,7 @@ class PolicyValueNet():
                                     weight_decay=self.l2_const)
 
         if model_file:
+            print("initialising")
             net_params = torch.load(model_file)
             self.policy_value_net.load_state_dict(net_params)
 

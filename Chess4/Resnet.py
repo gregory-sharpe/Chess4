@@ -145,6 +145,7 @@ class ResNet(nn.Module):
             block(self.in_channels, intermediate_channels, identity_downsample, stride)
         )
 
+        # The expansion size is always 4 for ResNet 50,101,152
         self.in_channels = intermediate_channels * 4
 
         for i in range(num_residual_blocks - 1):

@@ -29,11 +29,21 @@ import time
 
 
 class TrainPipeline():
+    def getBestFile(self):
+        list_of_files = glob.glob('TrainedModels/BestModels/*')  # * means all if need specific format then *.csv
+        # requires atleast 1 file to be in best Models
+        if len(list_of_files) > 0:
+            bestFile = max(list_of_files, key=os.path.getctime)
+
+            return bestFile
+        else:
+            return None
     def setBestFile(self):
         list_of_files = glob.glob('TrainedModels/BestModels/*')  # * means all if need specific format then *.csv
         # requires atleast 1 file to be in best Models
         if len(list_of_files)>0:
             bestFile = max(list_of_files, key=os.path.getctime)
+            print("here")
             self.bestPolicy_value_net = PolicyValueNet(self.board_width,
                                                self.board_height,
                                                model_file=bestFile)
@@ -52,7 +62,7 @@ class TrainPipeline():
         self.learn_rate = 2e-3
         self.lr_multiplier = 1.0  # adaptively adjust the learning rate based on KL
         self.temp = 1.0  # the temperature param
-        self.n_playout = 5  # num of simulations for each move
+        self.n_playout = 2  # num of simulations for each move
         self.c_puct = 3
         self.buffer_size = 10000 # change back to 10000
         self.batch_size = 512  # mini-batch size for training
@@ -65,12 +75,13 @@ class TrainPipeline():
         self.check_freq = 10
         self.game_batch_num = 100
         self.best_win_ratio = 0.0
-        self.CPUCount = torch.multiprocessing.cpu_count()
+        self.CPUCount = 4#torch.multiprocessing.cpu_count()
         # num of simulations used for the pure mcts, which is used as
         # the opponent to evaluate the trained policy
         self.pure_mcts_playout_num = 100
+        init_model = self.getBestFile()
         if init_model:
-            #print("here1")
+            print("here model used")
             # start training from an initial policy-value net
             self.policy_value_net = PolicyValueNet(self.board_width,
                                                    self.board_height,
@@ -89,13 +100,6 @@ class TrainPipeline():
                                       is_selfplay=1)
         list_of_files = glob.glob('TrainedModels/BestModels/*')  # * means all if need specific format then *.csv
         # requires atleast 1 file to be in best Models
-        if len(list_of_files)>0:
-            bestFile = max(list_of_files, key=os.path.getctime)
-            self.bestPolicy_value_net = PolicyValueNet(self.board_width,
-                                               self.board_height,
-                                               model_file=bestFile,use_gpu=False)
-        else:
-            self.bestPolicy_value_net = None
 
     def get_equi_data(self, play_data):
         """augment the data set by rotation
@@ -152,22 +156,18 @@ class TrainPipeline():
                     axis=1)
             )
             if kl > self.kl_targ * 4:  # early stopping if D_KL diverges badly
-                print("in policy_update 4")
                 break
         # adaptively adjust the learning rate
         if kl > self.kl_targ * 2 and self.lr_multiplier > 0.1:
             self.lr_multiplier /= 1.5
         elif kl < self.kl_targ / 2 and self.lr_multiplier < 10:
             self.lr_multiplier *= 1.5
-        print("in policy_update 5")
         explained_var_old = (1 -
                              np.var(np.array(winner_batch) - old_v.flatten()) /
                              np.var(np.array(winner_batch)))
-        print("in policy_update 6")
         explained_var_new = (1 -
                              np.var(np.array(winner_batch) - new_v.flatten()) /
                              np.var(np.array(winner_batch)))
-        print("in policy_update 7")
         print(("kl:{:.5f},"
                "lr_multiplier:{:.3f},"
                "loss:{},"
@@ -186,7 +186,7 @@ class TrainPipeline():
                                          c_puct=self.c_puct,
                                          n_playout=self.n_playout)
         if self.bestPolicy_value_net == None:
-            best_mcts_player = MCTS_Pure(c_puct=5,
+            best_mcts_player = MCTS_Pure(c_puct=self.c_puct,
                                          n_playout=self.pure_mcts_playout_num)
         else:
             best_mcts_player = MCTSPlayer(self.bestPolicy_value_net.policy_value_fn,
@@ -264,11 +264,11 @@ class TrainPipeline():
                     # update the best_policy
                     bestFilePath = "TrainedModels/BestModels/policyModel" + str(fileNumber) + ".model"
                     self.policy_value_net.save_model(bestFilePath)
-                    self.setBestFile()# this will only happen once
+                    self.setBestFile()# deprecated
             else:
                 bestFilePath = "TrainedModels/BestModels/policyModel" + str(fileNumber) + ".model"
                 self.policy_value_net.save_model(bestFilePath)
-                self.setBestFile()#requires lock
+                self.setBestFile()#deprecated
     # to be deprecated in favour a model that collects training data in parralel then trains using that training data later
     def collectDataInParralel(self,selfPlayData):
         self.collect_selfplay_data(self.play_batch_size)
@@ -295,12 +295,12 @@ class TrainPipeline():
                 print("New best policy!!!!!!!!")
                 bestFilePath = "TrainedModels/BestModels/policyModel" + str(fileNumber) + ".model"
                 self.policy_value_net.save_model(bestFilePath)
-                self.setBestFile()
+                #self.setBestFile()
         else:
             print("saving current policy because there is no other policy to play against")
             bestFilePath = "TrainedModels/BestModels/policyModel" + str(fileNumber) + ".model"
             self.policy_value_net.save_model(bestFilePath)
-            self.setBestFile()
+            #self.setBestFile()
 
     def runSelfPlayInParralelWithManager(self,selfPlayData,mBestPolicy,i, saveNoneBestModels=False):
         self.collect_selfplay_data(self.play_batch_size)
@@ -351,6 +351,7 @@ class TrainPipeline():
     # evaluate the data
     def runWithManagerModularised(self):
         policyUpdateCycles = 10
+
         with torch.multiprocessing.Manager() as manager:
 
             ## collecting data
@@ -368,9 +369,10 @@ class TrainPipeline():
             print(len(self.data_buffer))
             print("updating policy")
             self.policy_update()
-
-        print("evaluating policy")
-        self.evaluateData()
+        bestFilePath = "TrainedModels/BestModels/policyModel" + str(0) + ".model"
+        self.policy_value_net.save_model(bestFilePath)
+        #print("evaluating policy")
+        #self.evaluateData() deterministic so no point
 
     # deprecated
     def runWithmanager(self):

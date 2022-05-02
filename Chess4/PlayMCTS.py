@@ -15,6 +15,7 @@ def getBestFile():
     # requires atleast 1 file to be in best Models
     if len(list_of_files) > 0:
         bestFile = max(list_of_files, key=os.path.getctime)
+
         return PolicyValueNet(14,
                               14,
                               model_file=bestFile)
@@ -26,13 +27,13 @@ if __name__ == "__main__" :
     players = g.gs.allPlayers
     for i in range(1,4):
         players[i].isHumanPlaying=False
-        players[i].isMcts = False
-        #players[i].isBestMcts=True
+        players[i].isMcts = True
+        players[i].isBestMcts=True
         print(players[i].isHumanPlaying)
     if bestPolicy == None:
         g.startGame(DontCreateGS=True)
     else:
-        c_punct = 5
+        c_punct = 1
         n_playout = 100
         temp = 1e-3
         bestMCTSPlayer = MCTSPlayer(bestPolicy.policy_value_fn,
